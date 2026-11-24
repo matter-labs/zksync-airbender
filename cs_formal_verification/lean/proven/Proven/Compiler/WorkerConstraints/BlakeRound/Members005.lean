@@ -1,0 +1,108 @@
+module
+public import Proven.Compiler.WorkerConstraints.BlakeRound.Tuples
+public import Proven.KernelExact
+
+@[expose] public section
+set_option warningAsError true
+namespace Airbender.Compiler.WorkerConstraints.BlakeRound
+open Airbender.Compiler.WorkerConstraints NativeArithmetic NativeWorkerLookups
+set_option maxRecDepth 32768
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member80 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand80.input.fields physical = NativeWorkerSetup.rows .blakeRound 2 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 2) (values := operand80.input.fields physical) (List.mem_append_right (b := operand80.input.fields physical) (bs := (tuple2_001 physical ++ (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))))) (tuple2_000 physical) (List.mem_append_right (b := operand80.input.fields physical) (bs := (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ []))))) (tuple2_001 physical) (List.mem_append_right (b := operand80.input.fields physical) (bs := (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))) (tuple2_002 physical) (List.mem_append_right (b := operand80.input.fields physical) (bs := (tuple2_004 physical ++ (tuple2_005 physical ++ []))) (tuple2_003 physical) (List.mem_append_right (b := operand80.input.fields physical) (bs := (tuple2_005 physical ++ [])) (tuple2_004 physical) (List.mem_append_left (a := operand80.input.fields physical) (as := tuple2_005 physical) ([]) (List.getElem_mem (l := tuple2_005 physical) (n := 0) (by change 0 < 9; decide))))))))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member81 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand81.input.fields physical = NativeWorkerSetup.rows .blakeRound 2 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 2) (values := operand81.input.fields physical) (List.mem_append_right (b := operand81.input.fields physical) (bs := (tuple2_001 physical ++ (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))))) (tuple2_000 physical) (List.mem_append_right (b := operand81.input.fields physical) (bs := (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ []))))) (tuple2_001 physical) (List.mem_append_right (b := operand81.input.fields physical) (bs := (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))) (tuple2_002 physical) (List.mem_append_right (b := operand81.input.fields physical) (bs := (tuple2_004 physical ++ (tuple2_005 physical ++ []))) (tuple2_003 physical) (List.mem_append_right (b := operand81.input.fields physical) (bs := (tuple2_005 physical ++ [])) (tuple2_004 physical) (List.mem_append_left (a := operand81.input.fields physical) (as := tuple2_005 physical) ([]) (List.getElem_mem (l := tuple2_005 physical) (n := 1) (by change 1 < 9; decide))))))))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member82 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand82.input.fields physical = NativeWorkerSetup.rows .blakeRound 2 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 2) (values := operand82.input.fields physical) (List.mem_append_right (b := operand82.input.fields physical) (bs := (tuple2_001 physical ++ (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))))) (tuple2_000 physical) (List.mem_append_right (b := operand82.input.fields physical) (bs := (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ []))))) (tuple2_001 physical) (List.mem_append_right (b := operand82.input.fields physical) (bs := (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))) (tuple2_002 physical) (List.mem_append_right (b := operand82.input.fields physical) (bs := (tuple2_004 physical ++ (tuple2_005 physical ++ []))) (tuple2_003 physical) (List.mem_append_right (b := operand82.input.fields physical) (bs := (tuple2_005 physical ++ [])) (tuple2_004 physical) (List.mem_append_left (a := operand82.input.fields physical) (as := tuple2_005 physical) ([]) (List.getElem_mem (l := tuple2_005 physical) (n := 2) (by change 2 < 9; decide))))))))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member83 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand83.input.fields physical = NativeWorkerSetup.rows .blakeRound 2 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 2) (values := operand83.input.fields physical) (List.mem_append_right (b := operand83.input.fields physical) (bs := (tuple2_001 physical ++ (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))))) (tuple2_000 physical) (List.mem_append_right (b := operand83.input.fields physical) (bs := (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ []))))) (tuple2_001 physical) (List.mem_append_right (b := operand83.input.fields physical) (bs := (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))) (tuple2_002 physical) (List.mem_append_right (b := operand83.input.fields physical) (bs := (tuple2_004 physical ++ (tuple2_005 physical ++ []))) (tuple2_003 physical) (List.mem_append_right (b := operand83.input.fields physical) (bs := (tuple2_005 physical ++ [])) (tuple2_004 physical) (List.mem_append_left (a := operand83.input.fields physical) (as := tuple2_005 physical) ([]) (List.getElem_mem (l := tuple2_005 physical) (n := 3) (by change 3 < 9; decide))))))))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member84 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand84.input.fields physical = NativeWorkerSetup.rows .blakeRound 2 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 2) (values := operand84.input.fields physical) (List.mem_append_right (b := operand84.input.fields physical) (bs := (tuple2_001 physical ++ (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))))) (tuple2_000 physical) (List.mem_append_right (b := operand84.input.fields physical) (bs := (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ []))))) (tuple2_001 physical) (List.mem_append_right (b := operand84.input.fields physical) (bs := (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))) (tuple2_002 physical) (List.mem_append_right (b := operand84.input.fields physical) (bs := (tuple2_004 physical ++ (tuple2_005 physical ++ []))) (tuple2_003 physical) (List.mem_append_right (b := operand84.input.fields physical) (bs := (tuple2_005 physical ++ [])) (tuple2_004 physical) (List.mem_append_left (a := operand84.input.fields physical) (as := tuple2_005 physical) ([]) (List.getElem_mem (l := tuple2_005 physical) (n := 4) (by change 4 < 9; decide))))))))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member85 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand85.input.fields physical = NativeWorkerSetup.rows .blakeRound 2 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 2) (values := operand85.input.fields physical) (List.mem_append_right (b := operand85.input.fields physical) (bs := (tuple2_001 physical ++ (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))))) (tuple2_000 physical) (List.mem_append_right (b := operand85.input.fields physical) (bs := (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ []))))) (tuple2_001 physical) (List.mem_append_right (b := operand85.input.fields physical) (bs := (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))) (tuple2_002 physical) (List.mem_append_right (b := operand85.input.fields physical) (bs := (tuple2_004 physical ++ (tuple2_005 physical ++ []))) (tuple2_003 physical) (List.mem_append_right (b := operand85.input.fields physical) (bs := (tuple2_005 physical ++ [])) (tuple2_004 physical) (List.mem_append_left (a := operand85.input.fields physical) (as := tuple2_005 physical) ([]) (List.getElem_mem (l := tuple2_005 physical) (n := 5) (by change 5 < 9; decide))))))))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member86 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand86.input.fields physical = NativeWorkerSetup.rows .blakeRound 2 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 2) (values := operand86.input.fields physical) (List.mem_append_right (b := operand86.input.fields physical) (bs := (tuple2_001 physical ++ (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))))) (tuple2_000 physical) (List.mem_append_right (b := operand86.input.fields physical) (bs := (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ []))))) (tuple2_001 physical) (List.mem_append_right (b := operand86.input.fields physical) (bs := (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))) (tuple2_002 physical) (List.mem_append_right (b := operand86.input.fields physical) (bs := (tuple2_004 physical ++ (tuple2_005 physical ++ []))) (tuple2_003 physical) (List.mem_append_right (b := operand86.input.fields physical) (bs := (tuple2_005 physical ++ [])) (tuple2_004 physical) (List.mem_append_left (a := operand86.input.fields physical) (as := tuple2_005 physical) ([]) (List.getElem_mem (l := tuple2_005 physical) (n := 6) (by change 6 < 9; decide))))))))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member87 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand87.input.fields physical = NativeWorkerSetup.rows .blakeRound 2 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 2) (values := operand87.input.fields physical) (List.mem_append_right (b := operand87.input.fields physical) (bs := (tuple2_001 physical ++ (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))))) (tuple2_000 physical) (List.mem_append_right (b := operand87.input.fields physical) (bs := (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ []))))) (tuple2_001 physical) (List.mem_append_right (b := operand87.input.fields physical) (bs := (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))) (tuple2_002 physical) (List.mem_append_right (b := operand87.input.fields physical) (bs := (tuple2_004 physical ++ (tuple2_005 physical ++ []))) (tuple2_003 physical) (List.mem_append_right (b := operand87.input.fields physical) (bs := (tuple2_005 physical ++ [])) (tuple2_004 physical) (List.mem_append_left (a := operand87.input.fields physical) (as := tuple2_005 physical) ([]) (List.getElem_mem (l := tuple2_005 physical) (n := 7) (by change 7 < 9; decide))))))))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member88 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand88.input.fields physical = NativeWorkerSetup.rows .blakeRound 2 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 2) (values := operand88.input.fields physical) (List.mem_append_right (b := operand88.input.fields physical) (bs := (tuple2_001 physical ++ (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))))) (tuple2_000 physical) (List.mem_append_right (b := operand88.input.fields physical) (bs := (tuple2_002 physical ++ (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ []))))) (tuple2_001 physical) (List.mem_append_right (b := operand88.input.fields physical) (bs := (tuple2_003 physical ++ (tuple2_004 physical ++ (tuple2_005 physical ++ [])))) (tuple2_002 physical) (List.mem_append_right (b := operand88.input.fields physical) (bs := (tuple2_004 physical ++ (tuple2_005 physical ++ []))) (tuple2_003 physical) (List.mem_append_right (b := operand88.input.fields physical) (bs := (tuple2_005 physical ++ [])) (tuple2_004 physical) (List.mem_append_left (a := operand88.input.fields physical) (as := tuple2_005 physical) ([]) (List.getElem_mem (l := tuple2_005 physical) (n := 8) (by change 8 < 9; decide))))))))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member89 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand89.input.fields physical = NativeWorkerSetup.rows .blakeRound 0 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 0) (values := operand89.input.fields physical) (List.mem_append_left (a := operand89.input.fields physical) (as := tuple0_000 physical) ((tuple0_001 physical ++ (tuple0_002 physical ++ (tuple0_003 physical ++ (tuple0_004 physical ++ (tuple0_005 physical ++ (tuple0_006 physical ++ (tuple0_007 physical ++ (tuple0_008 physical ++ (tuple0_009 physical ++ (tuple0_010 physical ++ (tuple0_011 physical ++ [])))))))))))) (List.getElem_mem (l := tuple0_000 physical) (n := 0) (by change 0 < 16; decide)))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member90 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand90.input.fields physical = NativeWorkerSetup.rows .blakeRound 0 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 0) (values := operand90.input.fields physical) (List.mem_append_left (a := operand90.input.fields physical) (as := tuple0_000 physical) ((tuple0_001 physical ++ (tuple0_002 physical ++ (tuple0_003 physical ++ (tuple0_004 physical ++ (tuple0_005 physical ++ (tuple0_006 physical ++ (tuple0_007 physical ++ (tuple0_008 physical ++ (tuple0_009 physical ++ (tuple0_010 physical ++ (tuple0_011 physical ++ [])))))))))))) (List.getElem_mem (l := tuple0_000 physical) (n := 1) (by change 1 < 16; decide)))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member91 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand91.input.fields physical = NativeWorkerSetup.rows .blakeRound 0 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 0) (values := operand91.input.fields physical) (List.mem_append_left (a := operand91.input.fields physical) (as := tuple0_000 physical) ((tuple0_001 physical ++ (tuple0_002 physical ++ (tuple0_003 physical ++ (tuple0_004 physical ++ (tuple0_005 physical ++ (tuple0_006 physical ++ (tuple0_007 physical ++ (tuple0_008 physical ++ (tuple0_009 physical ++ (tuple0_010 physical ++ (tuple0_011 physical ++ [])))))))))))) (List.getElem_mem (l := tuple0_000 physical) (n := 2) (by change 2 < 16; decide)))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member92 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand92.input.fields physical = NativeWorkerSetup.rows .blakeRound 0 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 0) (values := operand92.input.fields physical) (List.mem_append_left (a := operand92.input.fields physical) (as := tuple0_000 physical) ((tuple0_001 physical ++ (tuple0_002 physical ++ (tuple0_003 physical ++ (tuple0_004 physical ++ (tuple0_005 physical ++ (tuple0_006 physical ++ (tuple0_007 physical ++ (tuple0_008 physical ++ (tuple0_009 physical ++ (tuple0_010 physical ++ (tuple0_011 physical ++ [])))))))))))) (List.getElem_mem (l := tuple0_000 physical) (n := 3) (by change 3 < 16; decide)))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member93 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand93.input.fields physical = NativeWorkerSetup.rows .blakeRound 0 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 0) (values := operand93.input.fields physical) (List.mem_append_left (a := operand93.input.fields physical) (as := tuple0_000 physical) ((tuple0_001 physical ++ (tuple0_002 physical ++ (tuple0_003 physical ++ (tuple0_004 physical ++ (tuple0_005 physical ++ (tuple0_006 physical ++ (tuple0_007 physical ++ (tuple0_008 physical ++ (tuple0_009 physical ++ (tuple0_010 physical ++ (tuple0_011 physical ++ [])))))))))))) (List.getElem_mem (l := tuple0_000 physical) (n := 4) (by change 4 < 16; decide)))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member94 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand94.input.fields physical = NativeWorkerSetup.rows .blakeRound 0 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 0) (values := operand94.input.fields physical) (List.mem_append_left (a := operand94.input.fields physical) (as := tuple0_000 physical) ((tuple0_001 physical ++ (tuple0_002 physical ++ (tuple0_003 physical ++ (tuple0_004 physical ++ (tuple0_005 physical ++ (tuple0_006 physical ++ (tuple0_007 physical ++ (tuple0_008 physical ++ (tuple0_009 physical ++ (tuple0_010 physical ++ (tuple0_011 physical ++ [])))))))))))) (List.getElem_mem (l := tuple0_000 physical) (n := 5) (by change 5 < 16; decide)))
+
+/-- Exact native matching supplies the public row for this primitive tuple. -/
+theorem member95 (physical : GKRAddress → F)
+    (arguments : NativeLookups.Arguments (circuitFor .blakeRound) (selectorsFor .blakeRound) physical (NativeWorkerSetup.rows .blakeRound)) :
+    ∃ index, operand95.input.fields physical = NativeWorkerSetup.rows .blakeRound 0 index := by
+  kernel_exact native_member (family := .blakeRound) (physical := physical) (tuples := tuples physical) arguments (binding physical) (group := 0) (values := operand95.input.fields physical) (List.mem_append_left (a := operand95.input.fields physical) (as := tuple0_000 physical) ((tuple0_001 physical ++ (tuple0_002 physical ++ (tuple0_003 physical ++ (tuple0_004 physical ++ (tuple0_005 physical ++ (tuple0_006 physical ++ (tuple0_007 physical ++ (tuple0_008 physical ++ (tuple0_009 physical ++ (tuple0_010 physical ++ (tuple0_011 physical ++ [])))))))))))) (List.getElem_mem (l := tuple0_000 physical) (n := 6) (by change 6 < 16; decide)))
+
+
+end Airbender.Compiler.WorkerConstraints.BlakeRound
