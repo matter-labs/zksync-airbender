@@ -25,7 +25,7 @@ contract RevertingRegistry is IVerificationRegistry {
 /// code, without constructor arguments.
 abstract contract MergedBase {
     Vm constant vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
-    string constant DATA = "../../../debug_data/l1_wrap_ethproofs/";
+    string constant DATA = "../../../debug_data/ethproofs_soundcalc/";
     uint256 constant EIP170 = 24_576;
     uint256 constant GLAMSTERDAM_CODE_LIMIT = 65_536;
 
