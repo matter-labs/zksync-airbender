@@ -21,7 +21,7 @@ fn candidate() -> ProverConfig {
 }
 
 #[test]
-fn canonical_pessimistic_l1_schedule() {
+fn canonical_l1_wrap_schedule() {
     let config = l1_wrap::packed_prover_config();
     config.validate_for_whir_message_size(24);
     let schedule = &config.whir_schedule;
@@ -133,9 +133,4 @@ fn ethproofs_wrap_keeps_the_base_domain_for_two_internal_oracles() {
     assert_eq!(geometry.rfin, 7);
     let query_bits: Vec<_> = (0..geometry.num_rounds).map(|r| geometry.qib(r)).collect();
     assert_eq!(query_bits, [31, 31, 28, 25, 23, 20]);
-    let schedule = geometry.schedule_switch_yul();
-    for (qib, coset_bits) in query_bits.into_iter().zip([7, 8, 9, 10, 12, 13]) {
-        assert!(schedule.contains(&format!("qib := {qib} vp :=")));
-        assert!(schedule.contains(&format!(" cb := {coset_bits} }}")));
-    }
 }

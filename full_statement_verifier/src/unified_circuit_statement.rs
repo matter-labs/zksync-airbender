@@ -456,8 +456,6 @@ pub fn verify_unified_circuit_recursion_layer<
     )
 }
 
-// Every compression profile has the same statement; its generated verifier
-// supplies the cap and trace geometry.
 macro_rules! compression_statement {
     ($entry:ident, $module:ident, $verify:ident) => {
         pub fn $entry<
@@ -604,7 +602,11 @@ compression_statement_verifier! {
     /// As [`verify_full_statement_for_unified_circuit`].
     pub verify_full_statement_for_unified_circuit_without_delegations
 }
-compression_statement_verifier!(
-    verify_ethproofs_compression_statement,
-    ETHPROOFS_COMPRESSION_MAX_INSTANCES
-);
+compression_statement_verifier! {
+    /// The Ethproofs compression statement with a bounded unified instance count.
+    ///
+    /// # Safety
+    ///
+    /// As [`verify_full_statement_for_unified_circuit`].
+    pub verify_ethproofs_compression_statement, ETHPROOFS_COMPRESSION_MAX_INSTANCES
+}
