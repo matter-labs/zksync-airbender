@@ -93,15 +93,14 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 &mut padded_binary_image,
                 execution_kind.rom(),
             );
+            let circuit_type =
+                execution_kind.unified_circuit_in_mode(self.configuration.soundness_mode);
             let (
                 instruction_tape,
                 precomputations,
                 l1_wrap_precomputations,
                 (setup_time, preparation_time),
-            ) = if let Some(circuit_type) = execution_kind
-                .unified_circuit_in_mode(self.configuration.soundness_mode)
-                .filter(CircuitType::is_l1_wrap)
-            {
+            ) = if let Some(circuit_type) = circuit_type.filter(CircuitType::is_l1_wrap) {
                 let (instruction_tape, precomputations) = self.prepare_l1_wrap(
                     circuit_type,
                     &padded_binary_image,
@@ -111,7 +110,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 (
                     instruction_tape,
                     HashMap::new(),
-                    Some((circuit_type, precomputations)),
+                    Some(precomputations),
                     Default::default(),
                 )
             } else {
@@ -147,7 +146,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .chain(
                         l1_wrap_precomputations
                             .iter()
-                            .map(|(circuit_type, precomp)| (*circuit_type, precomp.clone())),
+                            .map(|precomp| (circuit_type.unwrap(), precomp.clone())),
                     )
                     .collect(),
             );
@@ -201,7 +200,6 @@ mod tests {
         let message = payload
             .downcast_ref::<String>()
             .map(String::as_str)
-            .or_else(|| payload.downcast_ref::<&str>().copied())
             .unwrap_or_default();
         assert!(
             message.contains("Ethproofs compression has no final profile"),

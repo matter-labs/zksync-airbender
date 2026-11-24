@@ -159,26 +159,29 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             &Arc::new(AtomicBool::new(false)),
         );
         drop(sender);
-        let (circuit_type, precomputations) = holder
-            .l1_wrap_precomputations
-            .as_ref()
-            .expect("L1Wrap setup was not registered");
-        let trace = collect_l1_wrap_trace(*circuit_type, receiver);
+        let circuit_type = holder
+            .execution_kind
+            .unified_circuit_in_mode(self.configuration.soundness_mode)
+            .unwrap();
+        let trace = collect_l1_wrap_trace(circuit_type, receiver);
         drop(
             non_determinism_return
                 .recv()
                 .expect("wrap simulation did not return its non-determinism source"),
         );
-        self.prove_l1_wrap_trace(batch_id, *circuit_type, precomputations, trace)
+        self.prove_l1_wrap_trace(batch_id, holder, trace)
     }
 
     fn prove_l1_wrap_trace(
         &self,
         batch_id: u64,
-        circuit_type: CircuitType,
-        precomputations: &B::Precomputations,
+        holder: &BinaryHolder<B>,
         trace: L1WrapTrace<B::Allocator>,
     ) -> L1WrapResult {
+        let circuit_type = holder
+            .execution_kind
+            .unified_circuit_in_mode(self.configuration.soundness_mode)
+            .unwrap();
         use ::prover::gkr::prover_config::example_configs::l1_wrap;
         let external_challenges_pow_bits = match circuit_type {
             CircuitType::L1Wrap | CircuitType::L1Wrap22 => l1_wrap::EXTERNAL_CHALLENGES_POW_BITS,
@@ -201,7 +204,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .send(WorkRequest::L1WrapProof(L1WrapProofRequest {
                 batch_id,
                 circuit_type,
-                precomputations: precomputations.clone(),
+                precomputations: holder
+                    .l1_wrap_precomputations
+                    .as_ref()
+                    .expect("L1Wrap setup was not registered")
+                    .clone(),
                 inits_and_teardowns: trace.inits_and_teardowns,
                 tracing_data: trace.tracing_data,
                 operation_mode,

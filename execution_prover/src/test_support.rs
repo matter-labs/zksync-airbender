@@ -61,7 +61,6 @@ impl BackendConfiguration for TestConfiguration {
 pub(crate) struct TestBackend {
     batches: Mutex<Vec<JoinHandle<()>>>,
     active_batches: Arc<Mutex<std::collections::HashSet<u64>>>,
-    soundness_mode: SoundnessMode,
     allocated_partial_trees: Arc<AtomicBool>,
 }
 
@@ -89,13 +88,12 @@ impl ExecutionBackend for TestBackend {
     type Precomputations = TestPrecomputations;
 
     fn initialize(
-        config: &ExecutionProverConfiguration<TestConfiguration>,
+        _config: &ExecutionProverConfiguration<TestConfiguration>,
         _worker: Arc<Worker>,
     ) -> Self {
         Self {
             batches: Mutex::new(Vec::new()),
             active_batches: Default::default(),
-            soundness_mode: config.soundness_mode,
             allocated_partial_trees: Default::default(),
         }
     }
@@ -138,7 +136,6 @@ impl ExecutionBackend for TestBackend {
             "test batch is already active"
         );
         let active_batches = self.active_batches.clone();
-        let soundness_mode = self.soundness_mode;
         let allocated_partial_trees = Arc::clone(&self.allocated_partial_trees);
         self.batches
             .lock()
@@ -171,15 +168,12 @@ impl ExecutionBackend for TestBackend {
                         }
                         WorkRequest::MemoryCommitment(request) => {
                             let config = match request.profile {
-                                ProofProfile::Standard => {
-                                    request.circuit_type.prover_config_in_mode(
-                                        request.precomputations.compiled_circuit(),
-                                        soundness_mode,
-                                    )
-                                }
+                                ProofProfile::Standard => request
+                                    .circuit_type
+                                    .prover_config(prover::definitions::SecurityLevel::Sec100),
                                 l1 => l1.prover_config(
                                     request.circuit_type.get_domain_size_log2() as usize,
-                                    soundness_mode,
+                                    prover::definitions::SoundnessMode::PessimisticConjecture,
                                 ),
                             };
                             let memory_partial_trees =
