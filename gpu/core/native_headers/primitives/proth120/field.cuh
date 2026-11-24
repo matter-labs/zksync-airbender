@@ -4,7 +4,6 @@
 #include "../carry_chain.cuh"
 #include "../field_accessors.cuh"
 #include "../ptx.cuh"
-#include <cassert>
 #include <cstddef>
 #include <type_traits>
 
@@ -19,7 +18,6 @@ struct __align__(16) proth120 {
   static constexpr u32 ORDER[4] = {1, 0, 0, 0x07000000};
   static constexpr u32 MONT_R[4] = {0xffffffdc, 0xffffffff, 0xffffffff, 0x03ffffff};
   static constexpr u32 MONT_R2[4] = {0x6db6e0a8, 0xdb6db6db, 0xb6db6db6, 0x05b6db6d};
-  static constexpr u32 MODULUS_BITS = 123;
 
   static constexpr DEVICE_FORCEINLINE proth120 ZERO() { return {{0, 0, 0, 0}}; }
   static constexpr DEVICE_FORCEINLINE proth120 ONE() { return {{0xffffffdc, 0xffffffff, 0xffffffff, 0x03ffffff}}; }
@@ -79,28 +77,6 @@ struct __align__(16) proth120 {
     return r;
   }
 
-  static DEVICE_FORCEINLINE void batch_inverse(const proth120 *input, proth120 *output, proth120 *prefix, const u32 count) {
-    if (count == 0)
-      return;
-    proth120 product = ONE();
-    for (u32 i = 0; i < count; i++) {
-      const proth120 value = input[i];
-      prefix[i] = product;
-      if (!is_zero(value))
-        product = mul(product, value);
-    }
-    proth120 r = inv(product);
-    for (u32 i = count; i-- > 0;) {
-      const proth120 value = input[i];
-      if (is_zero(value)) {
-        output[i] = ZERO();
-      } else {
-        output[i] = mul(r, prefix[i]);
-        r = mul(r, value);
-      }
-    }
-  }
-
   static DEVICE_FORCEINLINE proth120 from_u128_with_reduction(const u32 natural_le[4]);
   static DEVICE_FORCEINLINE proth120 reduce_lazy(proth120 x);
   static DEVICE_FORCEINLINE void to_canonical_be_bytes(proth120 v, u8 out[16]);
@@ -142,28 +118,11 @@ static_assert(LC % 2 == 0);
 struct __align__(16) proth120_wide {
   u32 limbs[8];
 
-  DEVICE_FORCEINLINE void set_lo(proth120 x) {
-#pragma unroll
-    for (u32 i = 0; i < LC; i++)
-      limbs[i] = x.limbs[i];
-  }
-  DEVICE_FORCEINLINE void set_hi(proth120 x) {
-#pragma unroll
-    for (u32 i = 0; i < LC; i++)
-      limbs[i + LC] = x.limbs[i];
-  }
   DEVICE_FORCEINLINE proth120 get_lo() const {
     proth120 r{};
 #pragma unroll
     for (u32 i = 0; i < LC; i++)
       r.limbs[i] = limbs[i];
-    return r;
-  }
-  DEVICE_FORCEINLINE proth120 get_hi() const {
-    proth120 r{};
-#pragma unroll
-    for (u32 i = 0; i < LC; i++)
-      r.limbs[i] = limbs[i + LC];
     return r;
   }
 };
@@ -234,13 +193,6 @@ template <u32 REDUCTION_SIZE = 1> DEVICE_FORCEINLINE proth120 add_pick_reduction
   return reduce<REDUCTION_SIZE>(rs);
 }
 
-template <u32 REDUCTION_SIZE = 1> DEVICE_FORCEINLINE proth120_wide add_wide(const proth120_wide &xs, const proth120_wide &ys) {
-  static_assert(REDUCTION_SIZE == 0 || REDUCTION_SIZE == 1 || REDUCTION_SIZE == 2 || REDUCTION_SIZE == 4);
-  proth120_wide rs = {};
-  add_limbs<false>(xs, ys, rs);
-  return reduce_wide<REDUCTION_SIZE>(rs);
-}
-
 template <u32 REDUCTION_SIZE = 1> DEVICE_FORCEINLINE proth120 sub_pick_reduction_size(const proth120 &xs, const proth120 &ys) {
   static_assert(REDUCTION_SIZE == 0 || REDUCTION_SIZE == 1 || REDUCTION_SIZE == 2 || REDUCTION_SIZE == 4);
   proth120 rs = {};
@@ -252,21 +204,6 @@ template <u32 REDUCTION_SIZE = 1> DEVICE_FORCEINLINE proth120 sub_pick_reduction
       return rs;
     const proth120 modulus = MODULUS<REDUCTION_SIZE>();
     add_limbs<false>(rs, modulus, rs);
-  }
-  return rs;
-}
-
-template <u32 REDUCTION_SIZE = 1> DEVICE_FORCEINLINE proth120_wide sub_wide(const proth120_wide &xs, const proth120_wide &ys) {
-  static_assert(REDUCTION_SIZE == 0 || REDUCTION_SIZE == 1 || REDUCTION_SIZE == 2 || REDUCTION_SIZE == 4);
-  proth120_wide rs = {};
-  if (REDUCTION_SIZE == 0) {
-    sub_limbs<false>(xs, ys, rs);
-  } else {
-    u32 carry = sub_limbs<true>(xs, ys, rs);
-    if (carry == 0)
-      return rs;
-    const proth120_wide modulus_squared = MODULUS_SQUARED<REDUCTION_SIZE>();
-    add_limbs<false>(rs, modulus_squared, rs);
   }
   return rs;
 }
@@ -335,14 +272,6 @@ DEVICE_FORCEINLINE void mad_row(u32 *odd, u32 *even, const u32 *a, u32 bi, size_
   odd[n - 1] = ptx::addc(odd[n - 1], 0);
 }
 
-DEVICE_FORCEINLINE void qad_row(u32 *odd, u32 *even, const u32 *a, u32 bi, size_t n = LC) {
-  cmad_n(odd, a, bi, n - 2);
-  odd[n - 2] = ptx::madc_lo_cc(a[n - 2], bi, 0);
-  odd[n - 1] = ptx::madc_hi(a[n - 2], bi, 0);
-  cmad_n(even, a + 1, bi, n - 2);
-  odd[n - 1] = ptx::addc(odd[n - 1], 0);
-}
-
 DEVICE_FORCEINLINE void multiply_raw(const proth120 &as, const proth120 &bs, proth120_wide &rs) {
   const u32 *a = as.limbs;
   const u32 *b = bs.limbs;
@@ -373,14 +302,6 @@ DEVICE_FORCEINLINE void sqr_raw(const proth120 &as, proth120_wide &rs) {
   mul_n(odd, a + 1, a[0], LC);
 
   static_assert(LC == 4);
-  // #pragma unroll
-  //     while (i < LC - 4) {
-  //       ++i;
-  //       mad_row(&even[2 * i + 2], &odd[2 * i], &a[i + 1], a[i], LC - i - 1);
-  //       ++i;
-  //       qad_row(&odd[2 * i], &even[2 * i + 2], &a[i + 1], a[i], LC - i);
-  //     }
-
   even[2 * LC - 4] = ptx::mul_lo(a[LC - 1], a[LC - 3]);
   even[2 * LC - 3] = ptx::mul_hi(a[LC - 1], a[LC - 3]);
   odd[2 * LC - 6] = ptx::mad_lo_cc(a[LC - 2], a[LC - 3], odd[2 * LC - 6]);
@@ -498,40 +419,6 @@ template <u32 REDUCTION_SIZE = 1> DEVICE_FORCEINLINE proth120 sqr_pick_reduction
   sqr_raw(xs, rs);
   redc_wide_inplace(rs);
   return reduce<REDUCTION_SIZE>(proth120{rs.get_lo()});
-}
-
-DEVICE_FORCEINLINE proth120 scalar_mul(u32 k, proth120 x) {
-  proth120 r = proth120::ZERO();
-  while (k) {
-    if (k & 1)
-      r = proth120::add(r, x);
-    k >>= 1;
-    if (k)
-      x = proth120::dbl(x);
-  }
-  return r;
-}
-
-DEVICE_FORCEINLINE proth120 half(proth120 x) {
-  if (x.limbs[0] & 1)
-    add_limbs<false>(x, MODULUS<1>(), x);
-  proth120 r{};
-#pragma unroll
-  for (u32 i = 0; i < LC - 1; i++)
-    r.limbs[i] = __funnelshift_r(x.limbs[i], x.limbs[i + 1], 1);
-  r.limbs[LC - 1] = x.limbs[LC - 1] >> 1;
-  return r;
-}
-
-DEVICE_FORCEINLINE u32 extract_bits(const u32 words[4], u32 offset, u32 count) {
-  assert(count <= 32 && offset <= 128 && count <= 128 - offset);
-  if (count == 0)
-    return 0;
-  u32 i = offset / 32, shift = offset % 32;
-  u32 v = words[i] >> shift;
-  if (shift && i < 3)
-    v |= words[i + 1] << (32 - shift);
-  return v & (count == 32 ? 0xffffffffu : (1u << count) - 1u);
 }
 
 } // namespace proth120_detail
