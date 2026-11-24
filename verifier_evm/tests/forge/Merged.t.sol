@@ -65,7 +65,7 @@ contract MergedTest is MergedBase {
     function _dataOffsets() internal view returns (uint256 cap, uint256 table) {
         uint256 db = vm.parseJsonUint(fields, ".digest_bytes");
         cap = _setupOffset() + 1 + (1 << vm.parseJsonUint(fields, ".setup_frontier_level")) * db;
-        table = cap + 32 * 8;
+        table = cap + 32 * @CAP_SIZE@;
     }
 
     function _flipLastByte(string memory name) internal view returns (bytes memory m) {
@@ -115,11 +115,11 @@ contract MergedTest is MergedBase {
         bytes memory code = wrapVerifier.code;
         require(
             keccak256(_slice(code, _setupOffset(), code.length))
-                == 0x7024dc38fe6be11ae2b04cf75f6210dfdaeced21bde20b3e5836c01737528b85,
+                == 0x@SETUP_HASH@,
             "embedded setup bytes changed"
         );
         bytes memory prefix = type(GkrWhirVerifierCode).runtimeCode;
-        require(code.length == prefix.length + 29_210, "runtime length differs");
+        require(code.length == prefix.length + @SETUP_SIZE@, "runtime length differs");
         // Check every byte; the pinned setup hash above identifies the complete suffix.
         for (uint256 i; i < prefix.length; ++i) {
             require(code[i] == prefix[i], "runtime prefix differs");
@@ -200,7 +200,7 @@ contract MergedTest is MergedBase {
 
     function test_rejects_whir_sumcheck_pad() external {
         _rejectsRunPad("whir_0_sumcheck");
-        _rejectsRunPad(_finalRound("_sumcheck")); // fold 5: ten fields, then five folding nonces
+        @PADDED_WHIR_ROUND@
     }
 
     function test_rejects_setup_leaf_pad() external {

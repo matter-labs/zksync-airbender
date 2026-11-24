@@ -6,42 +6,56 @@ fn source() -> ProgramSource {
     ProgramSource::legacy_binaries_from_bin(root.join("examples/basic_fibonacci/app.bin"))
 }
 
-/// Setup-tree level the verifier's pinned setup frontier holds (the cap is level 3).
+/// Setup-tree level pinned by the wrap verifier.
 const SETUP_FRONTIER_LEVEL: usize = 10;
 
 /// Recommits the L1 wrap setup (setup only, no proof), checks its cap against the committed
 /// reference wrap proof, and writes the `2^SETUP_FRONTIER_LEVEL` setup-tree nodes at that
 /// level, in physical order, for the verifier_evm setup frontier.
 #[test]
-#[ignore = "recommits the L1 wrap setup (about a minute of CPU) and writes the verifier_evm setup frontier"]
+#[ignore = "recommits both L1 wrap setups and writes their EVM setup frontiers"]
 fn export_l1_wrap_setup_frontier() {
+    for &mode in SoundnessMode::ALL {
+        export_setup_frontier(mode);
+    }
+}
+
+fn export_setup_frontier(mode: SoundnessMode) {
     use ::prover::field::Proth120;
     use ::prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
     use ::prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
     use ::prover::worker::Worker;
 
-    let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
-        "pessimistic_conjecture",
-        "l1",
-    ));
+    let artifact: ProofArtifact =
+        proof_fixtures::read_file(proof_fixtures::chain_artifact(mode.file_suffix(), "l1"));
     let bundle = artifact.l1.expect("L1 artifact contains the wrap bundle");
     bundle.validate().expect("committed L1 wrap bundle");
     let setup_commitment = &bundle.proof.whir_proof.setup_commitment;
 
-    let circuit_type = CircuitType::L1Wrap;
+    let rom = ::prover::common_constants::rom::L1_WRAP_ROM;
     let (mut binary, mut text) = load_fsv_exact(
         fsv_dir(),
-        &FsvDescriptor::compression(FsvProfile::CompressionFinalWrap),
+        &FsvDescriptor {
+            soundness_mode: mode,
+            ..FsvDescriptor::compression(FsvProfile::CompressionFinalWrap)
+        },
     )
     .into_words();
-    setups::pad_bytecode_for_proving_with_rom(&mut binary, circuit_type.rom());
-    setups::pad_bytecode_for_proving_with_rom(&mut text, circuit_type.rom());
+    setups::pad_bytecode_for_proving_with_rom(&mut binary, rom);
+    setups::pad_bytecode_for_proving_with_rom(&mut text, rom);
     let worker = Worker::new();
-    let setup = unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup(&binary, &text, &worker);
-    let config = ProofProfile::L1Wrap.prover_config(
-        circuit_type.get_domain_size_log2() as usize,
-        SoundnessMode::PessimisticConjecture,
-    );
+    let setup = match mode {
+        SoundnessMode::PessimisticConjecture => {
+            unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup(&binary, &text, &worker)
+        }
+        SoundnessMode::EthproofsSoundnessCalc => {
+            setups::unrolled_circuits::unified_reduced_machine_proth120_2_22::l1_wrap_setup(
+                &binary, &text, &worker,
+            )
+        }
+    };
+    let config =
+        ::prover::gkr::prover_config::example_configs::l1_wrap::packed_prover_config_in_mode(mode);
     let pack_log2 = config.pack_log2();
     let twiddles = ::prover::fft::Twiddles::new(1 << (config.trace_len_log2 + pack_log2), &worker);
     let inputs: Vec<&[Proth120]> = setup
@@ -73,7 +87,9 @@ fn export_l1_wrap_setup_frontier() {
         .map(|d| d.iter().map(|w| format!("{w:08x}")).collect())
         .collect();
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../verifier_evm/debug_data/l1_wrap/setup_frontier.json");
+        .join("../verifier_evm/debug_data")
+        .join(mode.file_suffix())
+        .join("setup_frontier.json");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(
         &path,

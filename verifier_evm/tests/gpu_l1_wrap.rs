@@ -290,14 +290,11 @@ fn alternate_case(case: WrapCase) {
     .unwrap();
     fs::write(
         project.join("src/TestRegistry.sol"),
-        include_str!(concat!(
-            "../generated_contracts/l1_wrap/merged/",
-            "src/TestRegistry.sol"
-        )),
+        include_str!("forge/TestRegistry.sol"),
     )
     .unwrap();
-    let base = include_str!(concat!("../generated_contracts/l1_wrap/merged/", "test/MergedBase.sol"))
-        .replace("../../../debug_data/l1_wrap", "../data")
+    let base = include_str!("forge/MergedBase.sol")
+        .replace("@DATA@", "../data")
         .replace("interface Vm {", "interface Vm {\n    function readFileBinary(string calldata path) external view returns (bytes memory);");
     fs::write(project.join("test/MergedBase.sol"), base).unwrap();
     fs::write(
@@ -305,11 +302,7 @@ fn alternate_case(case: WrapCase) {
         include_str!("gpu_l1_wrap_controls.sol"),
     )
     .unwrap();
-    let settings = include_str!(concat!(
-        "../generated_contracts/l1_wrap/merged/",
-        "foundry.toml"
-    ))
-    .replace("../../../debug_data/l1_wrap", "../data");
+    let settings = include_str!("forge/foundry.toml").replace("@DATA@", "../data");
     fs::write(
         project.join("foundry.toml"),
         settings + "\ngas_limit = 240000000\nblock_gas_limit = 240000000\n",

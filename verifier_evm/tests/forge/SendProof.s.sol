@@ -16,7 +16,7 @@ contract SendProof {
     function run() external {
         address verifier = vm.envAddress("VERIFIER_ADDR");
         bytes memory proof = vm.parseBytes(
-            string.concat("0x", vm.readFile("../../../debug_data/l1_wrap/single_tx_calldata.hex"))
+            string.concat("0x", vm.readFile("@DATA@/single_tx_calldata.hex"))
         );
         vm.startBroadcast();
         (bool ok, bytes memory statement) = verifier.call(proof);

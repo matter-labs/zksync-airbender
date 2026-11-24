@@ -132,32 +132,30 @@ existing artifacts.
 | `chains/<mode>/unified` | CLI verification, currency, soundness smoke checks, typed encoding; unified FSV acceptance and rejection |
 | `chains/<mode>/unrolled` | CLI verification, currency, typed encoding; census recursion guest fit and gates |
 | `chains/<mode>/unrolled_unified` | CLI verification, currency, typed encoding; unified FSV acceptance and rejection |
-| `chains/pessimistic_conjecture/compression` | native CLI verification, compression tampering and trusted-chain tests; GPU L1 currency and continuation tests |
-| `chains/ethproofs_soundcalc/compression` | native CLI verification, currency and typed encoding; GPU compression parity |
-| `chains/pessimistic_conjecture/l1` | CLI envelope and native CompressionFinal-sidecar verification; wrap/frontier tests; EVM contract and calldata producers; GPU wrap parity |
-| `chains/ethproofs_soundcalc/l1` | Ethproofs EVM contract and calldata regeneration; Forge controls and GPU wrap parity |
+| `chains/<mode>/compression` | native CLI verification, compression currency and GPU parity |
+| `chains/<mode>/l1` | CLI envelope and compression-sidecar verification, setup frontier and EVM producers, Forge controls and GPU wrap parity |
 
 ## L1 production and EVM checks
 
-The pessimistic chain fixtures are `chains/pessimistic_conjecture/compression.json.zlib`
-and `l1.json.zlib`. The compression recipe reads the committed `unified.json.zlib`;
-the L1 recipe reads the committed compression chain. The L1 artifact retains the
-CompressionFinal sidecar and adds its Proth120 proof and operation-mode bundle.
+For each mode, the compression recipe reads the committed `unified.json.zlib`
+and the L1 recipe reads the committed `compression.json.zlib`. The L1 artifact
+retains the compression sidecar and adds the Proth120 proof and operation mode.
 
 Regenerate through the CLI after guest, circuit, config or format changes.
 Use default CLI features, including `deterministic_pow`, from the repository root:
 
 ```bash
 export CARGO_BUILD_JOBS=12 RUST_MIN_STACK=1073741824
-fixtures/regenerate.sh --mode pessimistic_conjecture --stage compression
-fixtures/regenerate.sh --mode pessimistic_conjecture --stage l1
-git status --porcelain -- fixtures/chains/pessimistic_conjecture
+for mode in pessimistic_conjecture ethproofs_soundcalc; do
+    fixtures/regenerate.sh --mode "$mode" --stage compression
+    fixtures/regenerate.sh --mode "$mode" --stage l1
+done
+git status --porcelain -- fixtures/chains
 ```
 
-CPU CI checks compression currency. The recipe regenerates the Ethproofs L1 fixture
-with `--mode ethproofs_soundcalc --stage l1` using the Ethproofs L1 wrap schedule.
-CLI verification checks the L1 envelope, chain and compression sidecar. The EVM
-verifier has generated projects for both Proth120 proofs.
+CPU CI checks compression currency. GPU CI checks both compression and L1
+currency in both modes. CLI verification checks the L1 envelope, chain and
+compression sidecar. The generated EVM verifier checks the Proth120 proof.
 The Standard stages use fixed Compression Blake modes. The unrolled-to-unified
 switch threshold is the library default unless `RECURSION_UNIFIED_SWITCH_CYCLES`
 is set; the recipe does not override it.
@@ -179,7 +177,7 @@ git status --porcelain -- verifier_evm/generated_contracts verifier_evm/debug_da
 verifier_evm/generated_contracts/run_merged.sh
 ```
 
-The [EVM harness README](../verifier_evm/generated_contracts/l1_wrap/README.md)
+The [EVM harness README](../verifier_evm/generated_contracts/README.md)
 describes deployment and calldata.
 
 ## GPU checks
@@ -188,8 +186,8 @@ The GPU canonical matrix covers Standard and `compression` circuit fixtures in
 both modes, plus the Pessimistic `compression_final` fixture. The inventory test
 binds the matrix to the mode-specific canonical registry.
 
-The GPU workflow's `chains` shard checks Standard and `compression` chains in
-both modes, plus the Pessimistic `l1` chain, through the shared recipe.
+The GPU workflow's `chains` shard checks Standard, `compression` and `l1`
+chains in both modes through the shared recipe.
 Before proving, it compares CPU and GPU trusted records byte for byte; GPU
 record construction logs the context's actual peak allocation per record.
 The shared cache includes compression records for both modes and no L1 wrap record.

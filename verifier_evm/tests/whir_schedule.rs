@@ -124,13 +124,3 @@ fn mixed_oracle_domains_accept_nonce_width_pow() {
     assert!(switch.contains("ood_pow_bits := 64"));
     assert!(switch.contains("qib := 28 vp := 16 cb := 9"));
 }
-
-#[test]
-fn ethproofs_wrap_keeps_the_base_domain_for_two_internal_oracles() {
-    let config = l1_wrap::ethproofs_packed_prover_config();
-    let geometry = WhirGenConfig::derive(&config, 96, 10);
-    assert_eq!(geometry.base_domain_log2, 32);
-    assert_eq!(geometry.rfin, 7);
-    let query_bits: Vec<_> = (0..geometry.num_rounds).map(|r| geometry.qib(r)).collect();
-    assert_eq!(query_bits, [31, 31, 28, 25, 23, 20]);
-}

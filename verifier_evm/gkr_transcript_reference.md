@@ -62,6 +62,6 @@ round, including the final arm. OOD-PoW controls cover every intermediate oracle
 Proof and setup-frontier producer commands are in the
 [fixture README](../fixtures/README.md).
 The EVM producers read `.l1` from the CLI `l1.json` artifact. The
-[contract harness README](generated_contracts/l1_wrap/README.md) gives contract
+[contract harness README](generated_contracts/pessimistic_conjecture/README.md) gives contract
 and calldata producer commands. The CI producer-and-diff check validates
 committed contracts against current inputs and templates.
