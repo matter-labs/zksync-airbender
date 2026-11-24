@@ -47,7 +47,7 @@ unrolled_circuit_names=(
     "shift_binary"
     "unified_reduced_machine"
     "unified_reduced_machine_2_22"
-    "unified_reduced_machine_proth120"
+    "unified_reduced_machine_proth120_2_21"
 )
 
 for CIRCUIT_NAME in "${circuit_names[@]}"; do
@@ -65,7 +65,10 @@ done
 (RUST_MIN_STACK=100000000 cargo test -p unified_reduced_machine_2_22 --profile cli --lib \
     test::witness_eval_fn_matches_sibling -- --exact)
 
-(RUST_MIN_STACK=100000000 cargo test -p unified_reduced_machine_proth120 --profile cli --lib \
+(RUST_MIN_STACK=100000000 cargo test -p unified_reduced_machine_proth120_2_21 --profile cli --lib \
+    test::l1_wrap21_is_current -- --exact)
+
+(RUST_MIN_STACK=100000000 cargo test -p unified_reduced_machine_proth120_2_21 --profile cli --lib \
     test::l1_wrap22_is_current -- --exact)
 
 (cd circuit_defs/setups && RUST_MIN_STACK=100000000 cargo test --release generate_delegation_circuits_artifacts)
@@ -83,7 +86,7 @@ done
 
 cargo run --release -p gpu_gkr_compiler --features search --bin gkr-forward-artifact -- \
     --if-stale --field proth120 --circuit unified_reduced_machine \
-    --layout circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json \
+    --layout circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json \
     --output cs/compiled_circuits/unified_reduced_machine_schedule_b4_gkr_proth120.json \
     --seed 42 --cache-buckets 4 --population 64 --evaluations 1024
 

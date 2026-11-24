@@ -75,10 +75,10 @@ fn export_setup_frontier(mode: SoundnessMode) {
     let worker = Worker::new();
     let setup = match mode {
         SoundnessMode::PessimisticConjecture => {
-            unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup(&binary, &text, &worker)
+            unified_reduced_machine_proth120_2_21::l1_wrap::l1_wrap_setup(&binary, &text, &worker)
         }
         SoundnessMode::EthproofsSoundnessCalc => {
-            setups::unrolled_circuits::unified_reduced_machine_proth120_2_22::l1_wrap_setup(
+            setups::unrolled_circuits::unified_reduced_machine_proth120_2_22::l1_wrap::l1_wrap_setup(
                 &binary, &text, &worker,
             )
         }

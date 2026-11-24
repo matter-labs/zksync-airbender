@@ -892,7 +892,7 @@ mod unified_reduced_machine {
     }
 }
 
-pub mod unified_reduced_machine_proth120 {
+pub mod proth120_unified_witness {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
@@ -905,7 +905,7 @@ pub mod unified_reduced_machine_proth120 {
     use ::field::proth120::Proth120;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
-    include!("../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/witness_generation_fn.rs");
+    include!("../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/witness_generation_fn.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, UnifiedRiscvCircuitOracle<'b>, Proth120>,

@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::SoundnessMode;
 use crate::ExecutionKind;
 use execution_prover_model::MachineType;
 use worker::Worker;
@@ -22,7 +23,9 @@ fn cpu_every_unrolled_family_of_every_machine_type_builds() {
         "Full execution tape changed"
     );
     for machine in [MachineType::FullUnsigned, MachineType::Reduced] {
-        for circuit_type in circuit_types_for_variant(ExecutionKind::Unrolled, machine) {
+        for circuit_type in
+            circuit_types_for_variant(ExecutionKind::Unrolled, machine, SoundnessMode::DEFAULT)
+        {
             let CanonicalCircuitSetup::Riscv(setup) =
                 build_unrolled_setup(machine, circuit_type, &binary, &binary, &worker)
             else {

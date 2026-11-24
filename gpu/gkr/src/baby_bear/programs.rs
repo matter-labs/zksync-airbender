@@ -64,8 +64,10 @@ const UNSIGNED_MUL_DIV: &[u8] =
 
 fn forward_artifact(circuit_type: CircuitType) -> (&'static [u8], &'static str) {
     match circuit_type {
-        CircuitType::L1Wrap | CircuitType::L1Wrap22 => {
-            panic!("BabyBear GKR programs cannot compile CircuitType::L1Wrap; use GkrProgramsPr")
+        CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => {
+            panic!(
+                "BabyBear GKR programs cannot compile Proth120 L1 wrap circuits; use GkrProgramsPr"
+            )
         }
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,

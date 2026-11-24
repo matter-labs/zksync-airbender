@@ -93,7 +93,7 @@ fn clone_setup(setup: &L1WrapSetup) -> L1WrapSetup {
 fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle, mode: SoundnessMode) {
     const WRAPS: u64 = 3;
     let (circuit_type, memory_preset) = match mode {
-        SoundnessMode::PessimisticConjecture => (CircuitType::L1Wrap, MemoryPreset::GiB30),
+        SoundnessMode::PessimisticConjecture => (CircuitType::L1Wrap21, MemoryPreset::GiB30),
         SoundnessMode::EthproofsSoundnessCalc => (CircuitType::L1Wrap22, MemoryPreset::GiB21),
     };
     assert_eq!(fixture.circuit_type, circuit_type);

@@ -11,7 +11,7 @@ use riscv_transpiler::elf::{read_elf_from_path_with_rom, ElfReadMode};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup;
+use unified_reduced_machine_proth120_2_21::l1_wrap::l1_wrap_setup;
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile, FsvProgram};
 use verifier_evm::encoding::{encode_single_tx, FormatParams};
 use worker::Worker;

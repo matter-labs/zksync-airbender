@@ -70,7 +70,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         HashMap<UnrolledCircuitType, B::Precomputations>,
         (Duration, Duration),
     ) {
-        let circuit_types = crate::setup::circuit_types_for_variant(execution_kind, machine_type);
+        let circuit_types = crate::setup::circuit_types_for_variant(
+            execution_kind,
+            machine_type,
+            self.configuration.soundness_mode,
+        );
         let mut setup_time = Duration::ZERO;
         let mut preparation_time = Duration::ZERO;
         let precomputations = circuit_types

@@ -65,7 +65,7 @@ members = [
     "circuit_defs/unrolled_circuits/shift_binary",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
     "circuit_defs/unrolled_circuits/unified_reduced_machine_2_22",
-    "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120",
+    "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21",
     "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_22",
 
     "cpu_execution_prover",
@@ -131,7 +131,7 @@ default-members = [
     "circuit_defs/unrolled_circuits/shift_binary",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
     "circuit_defs/unrolled_circuits/unified_reduced_machine_2_22",
-    "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120",
+    "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21",
     "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_22",
 ]
 
@@ -190,7 +190,7 @@ mul_div_unsigned = { path = "./circuit_defs/unrolled_circuits/mul_div_unsigned" 
 shift_binary = { path = "./circuit_defs/unrolled_circuits/shift_binary" }
 unified_reduced_machine = { path = "./circuit_defs/unrolled_circuits/unified_reduced_machine" }
 unified_reduced_machine_2_22 = { path = "./circuit_defs/unrolled_circuits/unified_reduced_machine_2_22" }
-unified_reduced_machine_proth120 = { path = "./circuit_defs/unrolled_circuits/unified_reduced_machine_proth120" }
+unified_reduced_machine_proth120_2_21 = { path = "./circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21" }
 unified_reduced_machine_proth120_2_22 = { path = "./circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_22" }
 
 trace_and_split = { path = "./circuit_defs/trace_and_split" }

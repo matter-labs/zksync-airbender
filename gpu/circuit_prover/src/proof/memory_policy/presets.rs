@@ -53,7 +53,7 @@ pub fn policy(
         CircuitType::L1Wrap22 if arena_bytes < PRESET_ARENA_BYTES[1] => {
             l1_wrap::L1_WRAP_REUSE_PREFIX_POLICY
         }
-        CircuitType::L1Wrap | CircuitType::L1Wrap22 => l1_wrap::L1_WRAP_POLICY,
+        CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => l1_wrap::L1_WRAP_POLICY,
         _ => generated::policy(circuit, select_arena_bytes(arena_bytes)),
     }
 }
@@ -63,7 +63,7 @@ pub fn partial_trees(circuit: CircuitType, profile: ProofProfile) -> PartialTree
         return compression::PARTIAL_TREES;
     }
     match circuit {
-        CircuitType::L1Wrap | CircuitType::L1Wrap22 => l1_wrap::PARTIAL_TREES,
+        CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => l1_wrap::PARTIAL_TREES,
         _ => PartialTreePolicy::DEFAULT,
     }
 }
@@ -125,8 +125,8 @@ mod cpu_tests {
             panic!("L1 wrap memory schedule test requires both arena presets");
         };
         for (circuit, arena, expected) in [
-            (CircuitType::L1Wrap, *tight, RawAndMonomials),
-            (CircuitType::L1Wrap, *roomy, RawAndMonomials),
+            (CircuitType::L1Wrap21, *tight, RawAndMonomials),
+            (CircuitType::L1Wrap21, *roomy, RawAndMonomials),
             (CircuitType::L1Wrap22, *tight, RawWithReusedPrefixScratch),
             (CircuitType::L1Wrap22, *roomy, RawAndMonomials),
         ] {

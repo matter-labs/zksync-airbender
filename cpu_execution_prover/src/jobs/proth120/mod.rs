@@ -116,7 +116,7 @@ pub(crate) fn evaluate_witness<A: HostTraceAllocator>(
         decoder_table: &setup.decoder_table,
     };
     let witness_eval_fn = match circuit_type {
-        CircuitType::L1Wrap | CircuitType::L1Wrap22 => l1_wrap::witness_eval_fn,
+        CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => l1_wrap::witness_eval_fn,
         other => panic!("{other:?} is not an L1 wrap circuit"),
     };
     evaluate_gkr_witness_for_executor_family::<Proth120, _, _, _>(

@@ -10,7 +10,7 @@ use gpu_trace::witness::circuit_type::{
 pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMemoryPolicy {
     match arena_bytes {
         22548578304 => match circuit {
-            CircuitType::L1Wrap | CircuitType::L1Wrap22 => panic!("L1Wrap uses the hand-authored proth120::presets policy; generated presets do not cover it"),
+            CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => panic!("L1Wrap uses the hand-authored proth120::presets policy; generated presets do not cover it"),
             CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 uses the CompressionFinal profile and the hand-authored baby_bear::presets::compression policy"),
             CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)
             | CircuitType::Delegation(DelegationCircuitType::KeccakChi5)
@@ -133,7 +133,7 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
             },
         },
         32212254720 => match circuit {
-            CircuitType::L1Wrap | CircuitType::L1Wrap22 => panic!("L1Wrap uses the hand-authored proth120::presets policy; generated presets do not cover it"),
+            CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => panic!("L1Wrap uses the hand-authored proth120::presets policy; generated presets do not cover it"),
             CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 uses the CompressionFinal profile and the hand-authored baby_bear::presets::compression policy"),
             CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression)
             | CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)

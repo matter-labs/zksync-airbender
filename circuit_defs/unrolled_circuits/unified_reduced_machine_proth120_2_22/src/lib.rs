@@ -1,19 +1,21 @@
-use prover::cs::gkr_compiler::GKRCircuitArtifact;
-use prover::field::Proth120;
-use prover::worker::Worker;
-use unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup_from_artifact;
-use unified_reduced_machine_proth120::L1WrapSetup;
+pub mod l1_wrap {
+    use prover::cs::gkr_compiler::GKRCircuitArtifact;
+    use prover::field::Proth120;
+    use prover::worker::Worker;
+    use unified_reduced_machine_proth120_2_21::l1_wrap::l1_wrap_setup_from_artifact;
+    use unified_reduced_machine_proth120_2_21::L1WrapSetup;
 
-use prover::gkr::prover_config::example_configs::l1_wrap::ETHPROOFS_TRACE_LEN_LOG2 as TRACE_LEN_LOG2;
+    use prover::gkr::prover_config::example_configs::l1_wrap::ETHPROOFS_TRACE_LEN_LOG2 as TRACE_LEN_LOG2;
 
-const LAYOUT_JSON: &str = include_str!("../generated/layout.json");
+    const LAYOUT_JSON: &str = include_str!("../generated/layout.json");
 
-fn circuit_artifact() -> GKRCircuitArtifact<Proth120> {
-    serde_json::from_str(LAYOUT_JSON).expect("embedded 2^22 Proth120 unified layout")
-}
+    fn circuit_artifact() -> GKRCircuitArtifact<Proth120> {
+        serde_json::from_str(LAYOUT_JSON).expect("embedded 2^22 Proth120 unified layout")
+    }
 
-pub fn l1_wrap_setup(binary: &[u32], text: &[u32], worker: &Worker) -> L1WrapSetup {
-    let circuit = circuit_artifact();
-    assert_eq!(circuit.trace_len, 1 << TRACE_LEN_LOG2);
-    l1_wrap_setup_from_artifact(circuit, binary, text, worker)
+    pub fn l1_wrap_setup(binary: &[u32], text: &[u32], worker: &Worker) -> L1WrapSetup {
+        let circuit = circuit_artifact();
+        assert_eq!(circuit.trace_len, 1 << TRACE_LEN_LOG2);
+        l1_wrap_setup_from_artifact(circuit, binary, text, worker)
+    }
 }

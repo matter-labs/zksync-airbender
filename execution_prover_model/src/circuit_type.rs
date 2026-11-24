@@ -56,8 +56,9 @@ const UNIFIED_REDUCED_MACHINE_2_22_NUM_INIT_AND_TEARDOWN_SETS: usize =
 pub enum CircuitType {
     Delegation(DelegationCircuitType),
     Unrolled(UnrolledCircuitType),
-    /// The 2^21 Proth120 L1 wrap over the 512 KiB wrap ROM.
-    L1Wrap,
+    /// The 2^21-row Proth120 L1 wrap used by Pessimistic Conjecture.
+    L1Wrap21,
+    /// The 2^22-row Proth120 L1 wrap used by Ethproofs Soundness Calc.
     L1Wrap22,
 }
 
@@ -79,7 +80,7 @@ impl CircuitType {
     /// The config pinned by the wrap identity, or the default-mode config at `level`.
     pub fn prover_config(&self, level: SecurityLevel) -> ProverConfig {
         match self {
-            Self::L1Wrap => ProofProfile::L1Wrap.prover_config(
+            Self::L1Wrap21 => ProofProfile::L1Wrap.prover_config(
                 self.get_domain_size_log2() as usize,
                 SoundnessMode::PessimisticConjecture,
             ),
@@ -96,8 +97,8 @@ impl CircuitType {
         match self {
             Self::Delegation(delegation_type) => delegation_type.geometry(),
             Self::Unrolled(unrolled_type) => unrolled_type.geometry(),
-            Self::L1Wrap | Self::L1Wrap22 => {
-                panic!("L1Wrap is the Proth120 wrap: its config is ProofProfile::L1Wrap's")
+            Self::L1Wrap21 | Self::L1Wrap22 => {
+                panic!("Proth120 wrap configs come from ProofProfile::L1Wrap")
             }
         }
     }
@@ -112,7 +113,7 @@ impl CircuitType {
         match self {
             Self::Delegation(delegation_type) => delegation_type.get_domain_size_log2(),
             Self::Unrolled(unrolled_type) => unrolled_type.get_domain_size_log2(),
-            Self::L1Wrap => 21,
+            Self::L1Wrap21 => 21,
             Self::L1Wrap22 => 22,
         }
     }
@@ -122,26 +123,26 @@ impl CircuitType {
         match self {
             Self::Delegation(_) => panic!("delegation circuits do not have a circuit family idx"),
             Self::Unrolled(unrolled_type) => unrolled_type.get_family_idx(),
-            Self::L1Wrap | Self::L1Wrap22 => REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
+            Self::L1Wrap21 | Self::L1Wrap22 => REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
         }
     }
 
     pub const fn get_num_inits_and_teardowns_sets(&self) -> usize {
         match self {
             Self::Unrolled(circuit) => circuit.get_num_inits_and_teardowns_sets(),
-            Self::L1Wrap | Self::L1Wrap22 => 2,
+            Self::L1Wrap21 | Self::L1Wrap22 => 2,
             Self::Delegation(_) => panic!("delegation circuits do not carry inits and teardowns"),
         }
     }
 
     pub const fn is_l1_wrap(&self) -> bool {
-        matches!(self, Self::L1Wrap | Self::L1Wrap22)
+        matches!(self, Self::L1Wrap21 | Self::L1Wrap22)
     }
 
     /// The ROM geometry the circuit's load/store and decoder tables assume.
     pub const fn rom(&self) -> RomGeometry {
         match self {
-            Self::L1Wrap | Self::L1Wrap22 => L1_WRAP_ROM,
+            Self::L1Wrap21 | Self::L1Wrap22 => L1_WRAP_ROM,
             Self::Delegation(_) | Self::Unrolled(_) => REGULAR_ROM,
         }
     }
@@ -524,7 +525,7 @@ mod prover_config_tests {
             .into_iter()
             .map(CircuitType::Unrolled),
         )
-        .chain([CircuitType::L1Wrap, CircuitType::L1Wrap22])
+        .chain([CircuitType::L1Wrap21, CircuitType::L1Wrap22])
         .collect();
         for circuit_type in all {
             for &level in SecurityLevel::ALL {

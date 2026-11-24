@@ -11,7 +11,7 @@ categories.workspace = true
 
 [dependencies]
 prover = { workspace = true, features = ["prover"] }
-unified_reduced_machine_proth120 = { workspace = true }
+unified_reduced_machine_proth120_2_21 = { workspace = true }
 serde_json = "*"
 
 [lints]

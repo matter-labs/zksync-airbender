@@ -1,10 +1,10 @@
 pub(crate) fn programs() -> crate::proth120::programs::GkrProgramsPr {
     let artifact = serde_json::from_slice(include_bytes!(
-        "../../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
+        "../../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json"
     ))
     .unwrap();
     crate::proth120::programs::GkrProgramsPr::compile(
-        gpu_trace::witness::circuit_type::CircuitType::L1Wrap,
+        gpu_trace::witness::circuit_type::CircuitType::L1Wrap21,
         std::sync::Arc::new(artifact),
     )
 }

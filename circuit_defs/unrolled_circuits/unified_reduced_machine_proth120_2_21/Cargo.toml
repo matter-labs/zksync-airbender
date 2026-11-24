@@ -1,5 +1,5 @@
 [package]
-name = "unified_reduced_machine_proth120"
+name = "unified_reduced_machine_proth120_2_21"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -197,8 +197,8 @@ pub(crate) mod cpu_tests {
 
     pub(crate) fn committed_layout(circuit_type: CircuitType) -> GKRCircuitArtifact<Proth120> {
         let json = match circuit_type {
-            CircuitType::L1Wrap => include_str!(
-                "../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
+            CircuitType::L1Wrap21 => include_str!(
+                "../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json"
             ),
             other => panic!("{other:?} has no committed Proth120 layout"),
         };
@@ -237,7 +237,7 @@ pub(crate) mod cpu_tests {
 
     #[test]
     fn cpu_l1_wrap_geometry_accepts_large_query_count_and_digest_pow() {
-        let wrap = CircuitType::L1Wrap;
+        let wrap = CircuitType::L1Wrap21;
         let circuit = committed_layout(wrap);
         let mut config = ProofProfile::L1Wrap.prover_config(
             wrap.get_domain_size_log2() as usize,
@@ -270,7 +270,7 @@ pub(crate) mod cpu_tests {
 
     #[test]
     fn cpu_l1_wrap_geometry_rejects_mismatch() {
-        let wrap21 = CircuitType::L1Wrap;
+        let wrap21 = CircuitType::L1Wrap21;
         let circuit = committed_layout(wrap21);
         let config = ProofProfile::L1Wrap.prover_config(
             wrap21.get_domain_size_log2() as usize,

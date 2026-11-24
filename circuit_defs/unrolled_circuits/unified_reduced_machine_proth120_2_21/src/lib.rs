@@ -4,7 +4,7 @@
 //!
 //! `generated/layout.json` is the compiled circuit the L1 wrap verifiers are generated from,
 //! and `generated/witness_generation_fn.rs` is the witness-eval fn derived from its SSA; the
-//! `generate` test writes both.
+//! `generate_l1_wrap21` test writes both.
 
 use common_constants::rom::{RomGeometry, L1_WRAP_ROM};
 use prover::cs::gkr_circuits::decoder_trait::{
@@ -162,7 +162,7 @@ mod test {
 
     /// Writes `generated/layout.json` and `generated/witness_generation_fn.rs`.
     #[test]
-    fn generate() {
+    fn generate_l1_wrap21() {
         skip_if_ci!();
 
         let layout = compile(l1_wrap::TRACE_LEN_LOG2);
@@ -172,6 +172,19 @@ mod test {
             .unwrap()
             .write_all(witness(&layout).as_bytes())
             .unwrap();
+    }
+
+    #[test]
+    fn l1_wrap21_is_current() {
+        let layout = compile(l1_wrap::TRACE_LEN_LOG2);
+        assert!(
+            serde_json::to_string_pretty(&layout).unwrap() == l1_wrap::LAYOUT_JSON,
+            "the committed 2^21 L1 wrap layout is stale"
+        );
+        assert!(
+            witness(&layout) == include_str!("../generated/witness_generation_fn.rs"),
+            "the committed shared L1 wrap witness function is stale"
+        );
     }
 
     const L1_WRAP22_LAYOUT: &str = "../unified_reduced_machine_proth120_2_22/generated/layout.json";

@@ -225,7 +225,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     let (full_trace, table_driver, decoder_table, top_bits) =
         build_unified_trace_without_precompiles(
             &vm,
-            super::unified_reduced_machine_proth120::witness_eval_fn,
+            super::proth120_unified_witness::witness_eval_fn,
             &unified_circuit,
             num_teardown_sets,
             trace_len,

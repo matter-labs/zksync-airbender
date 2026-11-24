@@ -40,9 +40,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 {
                     crate::config::assert_profiles_for_circuit(circuit, &profiles);
                 } else {
-                    for circuit in
-                        crate::setup::circuit_types_for_variant(execution_kind, machine_type)
-                    {
+                    for circuit in crate::setup::circuit_types_for_variant(
+                        execution_kind,
+                        machine_type,
+                        self.configuration.soundness_mode,
+                    ) {
                         crate::config::assert_profiles_for_circuit(
                             CircuitType::Unrolled(circuit),
                             &profiles,
@@ -88,7 +90,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let mut padded_binary_image = binary_image.to_vec();
             crate::upstream::pad_bytecode_for_proving_with_rom(
                 &mut padded_binary_image,
-                execution_kind.rom(),
+                execution_kind.rom(self.configuration.soundness_mode),
             );
             let circuit_type =
                 execution_kind.unified_circuit_in_mode(self.configuration.soundness_mode);

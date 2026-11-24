@@ -797,7 +797,7 @@ fn pr_transcript_phases_match_pessimistic_fixture() {
     ));
     let circuit: verifier_evm::seed::Circuit = serde_json::from_reader(
         std::fs::File::open(root.join(
-            "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json",
+            "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json",
         ))
         .unwrap(),
     )

@@ -28,7 +28,7 @@ pub fn prover_config(mode: SoundnessMode) -> ProverConfig {
 
 pub fn load(mode: SoundnessMode) -> (Circuit, Proof, OperationMode) {
     let layout_dir = match mode {
-        SoundnessMode::PessimisticConjecture => "unified_reduced_machine_proth120",
+        SoundnessMode::PessimisticConjecture => "unified_reduced_machine_proth120_2_21",
         SoundnessMode::EthproofsSoundnessCalc => "unified_reduced_machine_proth120_2_22",
     };
     let layout = Path::new("../circuit_defs/unrolled_circuits")

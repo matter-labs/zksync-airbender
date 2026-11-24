@@ -354,7 +354,7 @@ mod tests {
 
         let layout = std::fs::File::open(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json",
+            "/../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json",
         )).expect("L1 wrap circuit layout");
         let circuit = serde_json::from_reader(layout).expect("deserialize L1 wrap circuit");
         let columns = pow_bits::committed_base_oracle_columns::<Proth120>(

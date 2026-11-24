@@ -750,12 +750,12 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
         field: GeneratedField::BabyBear,
     },
     GeneratedCircuit {
-        id: "unified_reduced_machine_proth120",
+        id: "unified_reduced_machine_proth120_2_21",
         inputs: GeneratorInputs {
-            layout_json: "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json",
+            layout_json: "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json",
             ssa_json: "cs/compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
         },
-        committed_cuh: "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/witness_generation_fn.cuh",
+        committed_cuh: "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/witness_generation_fn.cuh",
         field: GeneratedField::Proth120,
     },
 ];
@@ -863,7 +863,7 @@ mod tests {
         let root = repo_root();
         let wrap21 = CIRCUITS
             .iter()
-            .find(|circuit| circuit.id == "unified_reduced_machine_proth120")
+            .find(|circuit| circuit.id == "unified_reduced_machine_proth120_2_21")
             .unwrap();
         let wrap22 = generate_from_files_for_field::<Proth120>(
             root.join("circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_22/generated/layout.json"),
@@ -958,8 +958,8 @@ mod tests {
         let root = repo_root();
         let circuit = CIRCUITS
             .iter()
-            .find(|c| c.id == "unified_reduced_machine_proth120")
-            .expect("unified_reduced_machine_proth120 entry");
+            .find(|c| c.id == "unified_reduced_machine_proth120_2_21")
+            .expect("unified_reduced_machine_proth120_2_21 entry");
         assert_eq!(circuit.field, GeneratedField::Proth120);
         let generated = circuit.regenerate(&root).unwrap();
         let layout: GKRCircuitArtifact<Proth120> =
