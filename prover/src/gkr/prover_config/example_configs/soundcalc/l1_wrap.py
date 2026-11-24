@@ -1,4 +1,7 @@
-"""Reproduce and certify the Ethproofs Proth120 L1 wrap schedule with soundcalc 2af5e7d."""
+"""Reproduce and certify the Ethproofs Proth120 L1 wrap schedule with soundcalc 2af5e7d.
+
+The packed width and hash size must match the asserts in prover_config_fixtures_are_current.
+"""
 import json
 from pathlib import Path
 

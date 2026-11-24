@@ -64,7 +64,8 @@ mod tests {
     use circuit_common::{
         prover_config_file_name, prover_config_notes_file_name, SecurityLevel, SoundnessMode,
     };
-    use prover::gkr::prover_config::{example_configs::l1_wrap, ProverConfig};
+    use prover::gkr::prover_config::{example_configs::l1_wrap, pow_bits, ProverConfig};
+    use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTES;
     use std::path::{Path, PathBuf};
     use verifier_common::test_circuits::CIRCUITS;
 
@@ -140,6 +141,21 @@ mod tests {
             SecurityLevel::Sec100,
             SoundnessMode::EthproofsSoundnessCalc,
             l1_wrap::ethproofs_packed_prover_config(),
+        );
+        let layout_2_22: prover::cs::gkr_compiler::GKRCircuitArtifact<prover::field::Proth120> =
+            serde_json::from_str(include_str!(
+                "../../unrolled_circuits/unified_reduced_machine_proth120_2_22/generated/layout.json"
+            ))
+            .expect("embedded 2^22 Proth120 unified layout");
+        assert_eq!(
+            pow_bits::committed_base_oracle_columns(&layout_2_22, l1_wrap::PACK_LOG2, true),
+            14,
+            "Ethproofs L1 wrap certificate batch width"
+        );
+        assert_eq!(
+            KECCAK256_MERKLE_DIGEST_BYTES * 8,
+            200,
+            "Ethproofs L1 wrap certificate hash size"
         );
     }
 
