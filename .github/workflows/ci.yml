@@ -42,9 +42,10 @@ jobs:
           rustup component add llvm-tools
       - name: Install cargo-binutils
         run: cargo install cargo-binutils --locked
-      - name: Fixture inventory and canonical encoding
+      - name: Fixture inventory, prover configs and canonical encoding
         run: |
           cargo test -p proof_fixtures --profile cli
+          cargo test -p setups --profile cli --lib prover_config_fixtures_are_current
           cargo test -p prover --features test --profile cli --test canonical_fixture_inputs canonical_fixture_encoding
       - name: GKR compiler feature tests
         env:
