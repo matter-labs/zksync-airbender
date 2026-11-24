@@ -53,11 +53,16 @@ PYTHONPATH=/tmp/soundcalc python3 late_round_rebalance.py      # JBR-rebalanced 
   its regime's batching term to the target.
 * The compression shape searches both base regimes at its own base rate
   and grinding caps, reusing the unified circuit and its merged commitment.
+  Each Ext4 challenge reduces four transcript words into BabyBear, with
+  at most three preimages per coordinate. The search uses the resulting
+  maximum point mass `81/2^128` for batching, folding, and OOD, by
+  constructing the field and proximity regimes with denominator `2^128/81`.
+  The Compression schedule reaches 100 bits for every WHIR PCS term at
+  the 128-column ceiling. Batching binds at 100 bits.
 
-The production shapes in `ethproofs_soundcalc.rs` are not the search's fewest-query
-output: they are tuned for proving time (a lower grind cap, a cheaper oracle-0 commit for
-more queries) and were certified with the same pinned WHIR module. The test-circuit shapes
-keep the search's schedules.
+The standard production shapes in `ethproofs_soundcalc.rs` are tuned for proving time
+(a lower grind cap, a cheaper oracle-0 commit for more queries) and were certified with the
+same pinned WHIR module. The Compression and test-circuit shapes use the search's schedules.
 
 `whir_schedule_search.py` prints each shape as `WhirSchedule` fields with the
 per-step folding PoW list (our `folding_pow_bits` is one value per oracle: the

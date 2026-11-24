@@ -157,7 +157,8 @@ fn ethproofs_compression_gkr_security_margins() {
     };
     let loss =
         ((f64::from(m) + 0.5) * 2.0_f64.powf(entry.base_lde_factor_log2 as f64 / 2.0)).log2();
-    let challenge_bits = 4.0 * (32.0 - 3.0_f64.log2());
+    let challenge_bits = 128.0 - 81.0_f64.log2();
+    assert_eq!(m, 3);
 
     let config = CompressionProfile::Step.config(mode);
     assert_eq!(circuit.trace_len, 1 << config.trace_len_log2);
@@ -167,6 +168,7 @@ fn ethproofs_compression_gkr_security_margins() {
     );
     let lookup_bits =
         challenge_bits + 14.0 - (pow_bits::lookup_identity_degree(circuit) as f64).log2() - loss;
+    println!("Johnson base list loss: {loss:.9} bits; lookup: {lookup_bits:.9} bits");
     assert!(lookup_bits >= 100.0, "lookup: {lookup_bits:.9} bits");
     let pessimistic = CompressionProfile::Step.config(SoundnessMode::PessimisticConjecture);
     assert_eq!(
@@ -183,6 +185,7 @@ fn ethproofs_compression_gkr_security_margins() {
         let degree = k * circuit.trace_len * keys_per_row + boundary_keys;
         let bits = challenge_bits - (degree as f64).log2() - 2.0 + memory_pow_bits as f64
             - k as f64 * loss;
+        println!("memory k={k}, j={k}: {bits:.9} bits");
         assert_eq!(degree, expected_degree);
         assert!(bits >= 100.0, "memory k={k}, j={k}: {bits:.9} bits");
     }

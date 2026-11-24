@@ -10,7 +10,7 @@ the batched polynomial of size 2^m is then re-committed as the first internal or
 which is exactly the virtual-packing shape; the emulated base code is 2x larger than the real one,
 so the emulated base fold term is 1 bit conservative; the real batching term is recomputed directly."""
 import math
-from soundcalc.common.fields import BABYBEAR_4 as F
+from soundcalc.common.fields import BABYBEAR_4 as F, FieldParams
 from soundcalc.pcs.whir import WHIR, WHIRConfig
 from soundcalc.proxgaps.proxgaps_regime import ProximityGapsRegime
 from soundcalc.proxgaps.johnson_bound import JohnsonBoundRegime
@@ -18,7 +18,7 @@ from soundcalc.proxgaps.unique_decoding import UniqueDecodingRegime
 from soundcalc.common.utils import get_bits_of_security_from_error as bits
 
 HASH_SIZE_BITS = 256
-TARGET = 100; LATER_POW = 27; FOLD_CAP = 24; MAX_DOM = 27; FIELD_BITS = 123
+TARGET = 100; LATER_POW = 27; FOLD_CAP = 24; MAX_DOM = 27
 
 class Mixed(ProximityGapsRegime):
     """per-iteration regime (WHIR Theorem 5.2 has per-iteration delta_i / ell_i); keyed by iteration rate"""
@@ -31,23 +31,21 @@ class Mixed(ProximityGapsRegime):
     def get_error_linear(self, r, d): return self.pick(r).get_error_linear(r, d)
     def get_error_multilinear(self, r, d, b): return self.pick(r).get_error_multilinear(r, d, b)
 
-UDR = UniqueDecodingRegime(F)
-JBR = {m: JohnsonBoundRegime(F, explicit_m=m) for m in (3, 4, 5, 8, 12, 20)}
-
-def batch_pow(msg_log2, n_cols, base_lde_log2=1):   # = prover_config::pow_bits::pow_bits_for_batched_proximity
+def batch_pow(msg_log2, n_cols, base_lde_log2, field):   # = prover_config::pow_bits::pow_bits_for_batched_proximity
     bbits = (n_cols - 1).bit_length()
-    return max(0, TARGET - max(0, FIELD_BITS - (msg_log2 + base_lde_log2) - bbits))
+    field_bits = math.floor(math.log2(field.F))
+    return max(0, TARGET - max(0, field_bits - (msg_log2 + base_lde_log2) - bbits))
 
-def build(log_degree, folds, queries, ldes, pows, fold_pows, ood_pows, n_cols, bpow, base_lde_log2=1):
+def build(log_degree, folds, queries, ldes, pows, fold_pows, ood_pows, n_cols, bpow, base_lde_log2=1, *, field=None):
     M = len(folds)
-    cfg = WHIRConfig(hash_size_bits=HASH_SIZE_BITS, log_inv_rate=base_lde_log2, num_iterations=M, folding_factors=folds, field=F,
+    cfg = WHIRConfig(hash_size_bits=HASH_SIZE_BITS, log_inv_rate=base_lde_log2, num_iterations=M, folding_factors=folds, field=F if field is None else field,
         log_degree=log_degree, batch_size=n_cols, power_batching=True, grinding_batching_phase=bpow, constraint_degree=3,
         grinding_bits_folding=fold_pows, num_queries=queries, grinding_bits_queries=pows,
         num_ood_samples=[1]*(M-1), grinding_bits_ood=ood_pows)
     w = WHIR(cfg); rates = [base_lde_log2] + ldes; w.log_inv_rates = rates + [rates[-1]]; return w
 
 def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=False, today=None,
-          base_lde_log2=1, base_regimes=None, max_pow=LATER_POW):
+          base_lde_log2=1, max_pow=LATER_POW, *, field=F, search_base_regimes=False):
     assert base_pow <= max_pow
     assert msg_log2 + base_lde_log2 <= MAX_DOM
     log_degree = msg_log2 + (1 if virtual else 0)
@@ -55,14 +53,19 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
     M = len(folds)
     polys = [log_degree - sum(folds[:i+1]) for i in range(M - 1)]
     base_rate = 2.0 ** -base_lde_log2
+    udr = UniqueDecodingRegime(field)
+    jbr = {m: JohnsonBoundRegime(field, explicit_m=m) for m in (3, 4, 5, 8, 12, 20)}
+    base_regimes = [("UDR", udr)]
+    if search_base_regimes:
+        base_regimes.extend((f"JBR m={m}", reg) for m, reg in jbr.items())
     best = None
-    for lab, reg in (base_regimes if base_regimes is not None else [('UDR', UDR)]):
-        bpow = (batch_pow(msg_log2, n_cols, base_lde_log2) if reg is UDR else
+    for lab, reg in base_regimes:
+        bpow = (batch_pow(msg_log2, n_cols, base_lde_log2, field) if reg is udr else
                 max(0, TARGET - bits(reg.get_error_powers(base_rate, 2 ** msg_log2, n_cols))))
         fp = []
         for s in range(1, folds[0] + 1):
             ls = reg.get_max_list_size(base_rate, 2 ** (log_degree - s + 1))
-            e = 3 * ls / F.F + reg.get_error_powers(base_rate, 2 ** (log_degree - s), 2)
+            e = 3 * ls / field.F + reg.get_error_powers(base_rate, 2 ** (log_degree - s), 2)
             fp.append(max(0, TARGET - bits(e)))
         if bpow > max_pow or max(fp) > FOLD_CAP: continue
         bpq = -math.log2(1 - reg.get_proximity_parameter(base_rate, 2 ** (log_degree - 1)))
@@ -75,7 +78,7 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
     queries, ldes, regimes, pows, fold_pows, ood_pows, rows = [t0], [], {base_lde_log2: base_reg}, [base_pow], [base_fp], [], []
     for i, p in enumerate(polys, start=1):
         k = folds[i]; best = None
-        cands = [("UDR", UDR, L) for L in range(2, MAX_DOM - p + 1)] + [(f"JBR m={m}", JBR[m], L) for m in JBR for L in range(2, MAX_DOM - p + 1)]
+        cands = [("UDR", udr, L) for L in range(2, MAX_DOM - p + 1)] + [(f"JBR m={m}", jbr[m], L) for m in jbr for L in range(2, MAX_DOM - p + 1)]
         for lab, reg, L in cands:
             if L in regimes: continue
             rate = 2.0 ** -L
@@ -84,19 +87,19 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
             fp = []
             for s in range(1, k + 1):
                 ls = reg.get_max_list_size(rate, 2 ** (p - s + 1))
-                e = 3 * ls / F.F + reg.get_error_powers(rate, 2 ** (p - s), 2)
+                e = 3 * ls / field.F + reg.get_error_powers(rate, 2 ** (p - s), 2)
                 fp.append(max(0, TARGET - bits(e)))
             if max(fp) > FOLD_CAP: continue
             ls0 = reg.get_max_list_size(rate, 2 ** p)
-            op = max(0, TARGET - bits(ls0 * ls0 * ((2 ** p) / (2 * F.F))))
+            op = max(0, TARGET - bits(ls0 * ls0 * ((2 ** p) / (2 * field.F))))
             if op > max_pow: continue
             rest = M - 1 - i
             trial = build(log_degree, folds, queries + [t] + [80] * rest, ldes + [L] + [21 + j for j in range(rest)],
                           pows + [max_pow] * (rest + 1), fold_pows + [fp] + [[0] * folds[i + 1 + j] for j in range(rest)],
-                          ood_pows + [op] + [0] * rest, n_cols, bpow, base_lde_log2)
+                          ood_pows + [op] + [0] * rest, n_cols, bpow, base_lde_log2, field=field)
             regs = dict(regimes); regs[L] = reg
-            for j in range(rest): regs[21 + j] = UDR
-            lv = trial.get_pcs_security_levels(Mixed(F, regs))
+            for j in range(rest): regs[21 + j] = udr
+            lv = trial.get_pcs_security_levels(Mixed(field, regs))
             local = {kk: v for kk, v in lv.items() if kk.startswith(f"fold(i={i},") or kk == f"OOD(i={i})" or kk == f"Shift(i={i+1})" or (i == M - 1 and kk == 'fin')}
             if not all(v >= TARGET for v in local.values()): continue
             key = (t, max(fp) + op, -L)
@@ -109,17 +112,17 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
         rest = M - 1 - i
         probe = build(log_degree, folds, queries + [t] + [80] * rest, ldes + [L] + [21 + j for j in range(rest)],
                       pows + [0] * (rest + 1), fold_pows + [fp] + [[0] * folds[i + 1 + j] for j in range(rest)],
-                      ood_pows + [op] + [0] * rest, n_cols, bpow, base_lde_log2)
+                      ood_pows + [op] + [0] * rest, n_cols, bpow, base_lde_log2, field=field)
         regs = dict(regimes); regs[L] = reg
-        for j in range(rest): regs[21 + j] = UDR
-        lv = probe.get_pcs_security_levels(Mixed(F, regs))
+        for j in range(rest): regs[21 + j] = udr
+        lv = probe.get_pcs_security_levels(Mixed(field, regs))
         query_term = lv['fin'] if i == M - 1 else lv[f"Shift(i={i+1})"]
         qpow = max(0, TARGET - query_term)
         assert qpow <= max_pow, (label, i, qpow)
         queries.append(t); ldes.append(L); regimes[L] = reg; pows.append(qpow); fold_pows.append(fp); ood_pows.append(op)
         rows.append((p, L, k, lab, bpq, t, fp, op, qpow, query_term))
-    w = build(log_degree, folds, queries, ldes, pows, fold_pows, ood_pows, n_cols, bpow, base_lde_log2)
-    lv = w.get_pcs_security_levels(Mixed(F, regimes)); kk = min(lv, key=lv.get)
+    w = build(log_degree, folds, queries, ldes, pows, fold_pows, ood_pows, n_cols, bpow, base_lde_log2, field=field)
+    lv = w.get_pcs_security_levels(Mixed(field, regimes)); kk = min(lv, key=lv.get)
     real_batch = bits(base_reg.get_error_powers(base_rate, 2 ** msg_log2, n_cols)) + bpow
     print(f"\n### {label}")
     print(f"target 100; batched-polynomial ceiling {n_cols} -> batching PoW {bpow} bits (batching term {real_batch} bits, {base_lab}, base code 2^{msg_log2} at rate 1/{2 ** base_lde_log2})")
@@ -127,12 +130,13 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
     bk = 'fold_log2 0 (virtual packing)' if virtual else f'fold_log2 {folds[0]}'
     delta = base_reg.get_proximity_parameter(base_rate, 2 ** (log_degree - 1))
     ell = base_reg.get_max_list_size(base_rate, 2 ** log_degree)
-    reason = "; JBR not certifiable here (batching term 73-90 bits for any m within the PoW budget) and its delta at rate 1/2 is below UDR's" if base_lde_log2 == 1 and base_reg is UDR else f'; per sumcheck round {base_fp}'
+    reason = "; JBR not certifiable here (batching term 73-90 bits for any m within the PoW budget) and its delta at rate 1/2 is below UDR's" if base_lde_log2 == 1 and base_reg is udr else f'; per sumcheck round {base_fp}'
     print(f"base_round: lde_factor_log2 {base_lde_log2}, {bk}, num_queries {t0}, queries_pow_bits {base_pow}, folding_pow_bits {max(base_fp)}, batching_pow_bits {bpow}  | regime {base_lab} (delta {delta:g}, {bpq0:.3f} bits/query, ell {ell:g}) -> base query term {base_bits} bits{reason}")
     for j, (p, L, k, lab, bpq, t, fp, op, qpow, query_term) in enumerate(rows):
-        needU = math.ceil((TARGET - max_pow) / -math.log2(1 - UDR.get_proximity_parameter(2.0**-L, 2**(p-1))))
+        needU = math.ceil((TARGET - max_pow) / -math.log2(1 - udr.get_proximity_parameter(2.0**-L, 2**(p-1))))
         print(f"internal_round {j}: poly 2^{p}, lde_factor_log2 {L} (domain 2^{p+L}), folding_log2 {k}, num_queries {t}, queries_pow_bits {qpow} (query term {query_term} bits ungrinded), folding_pow_bits {max(fp)} (per sumcheck round {fp}), num_ood_samples 1, ood_pow_bits {op}  | regime {lab}, {bpq:.2f} bits/query; UDR here would need {needU} queries")
     if today: print(f"today: {today}")
+    return lv
 
 
 if __name__ == "__main__":
@@ -149,6 +153,10 @@ if __name__ == "__main__":
     solve("2^20, virtual packing, ceiling 1024 (blake2_with_extended_control test circuit)", 20, [0,6,5,4,4], 1024, 27, virtual=True,
           today="virtual twin folds [0,6,5,4,4], lde_log2 [7,13,15,19], queries [89,13,7,6,5], qPoW [26,27,25,25,21]")
     solve("2^23, fold_log2 1, base round kept at 89 queries / PoW 26 (what today's base round certifies)", 23, [1,5,5,5,4], 128, 26, base_queries=89)
-    solve("2^23, fold_log2 1, base LDE 2^3, ceiling 128, compression", 23, [1,5,5,5,4], 128, 25,
-          base_lde_log2=3, base_regimes=[('UDR', UDR)] + [(f'JBR m={m}', JBR[m]) for m in JBR],
-          max_pow=25)
+    # Each reduced u32 has at most three preimages. The four-word challenge
+    # therefore has maximum point mass 81 / 2^128.
+    compression_field = FieldParams(F.name, F.p, F.field_extension_degree, 2**128 / 81, F.two_adicity)
+    levels = solve("2^23, fold_log2 1, base LDE 2^3, ceiling 128, compression",
+                   23, [1,5,5,5,4], 128, 25, base_lde_log2=3, max_pow=25,
+                   field=compression_field, search_base_regimes=True)
+    assert min(levels.values()) >= TARGET, levels

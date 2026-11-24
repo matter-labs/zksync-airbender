@@ -566,12 +566,16 @@ pub(super) const COMPRESSION_LOOKUP_CHALLENGES_POW_BITS: u32 = 14;
 /// The `ProofProfile::Compression` schedule. Not in [`ENTRIES`]: it shares its
 /// lookup key with a standard entry.
 ///
+/// Each BabyBear challenge coordinate is a reduced transcript word with at
+/// most three preimages. The Ext4 challenge has maximum point mass
+/// `81/2^128`, so the WHIR certificate uses `2^128/81` as its denominator.
+///
 /// Soundcalc's SWIRL accounting charges the base list on GKR-side terms. This
-/// Johnson base has `L ≈ 12.73`. Charge `log2(L)` to each lookup and
+/// Johnson base has `L ≈ 9.90`. Charge `log2(L)` to each lookup and
 /// `k * log2(L)` to shared memory for `k` instances. The memory identity has
 /// degree at most `(4k + 2j) * 2^23 + 33` with `j` inline i/t instances.
-/// At `j = k = 3`, 19 memory PoW bits give 100.480 bits with the two-bit
-/// reserve. A 14-bit lookup floor gives 100.890 bits.
+/// At `j = k = 3`, 19 memory PoW bits give 101.568 bits with the two-bit
+/// reserve. A 14-bit lookup floor gives 101.25 bits.
 pub const COMPRESSION_2_23: EthproofsSoundcalcEntry = EthproofsSoundcalcEntry {
     shape: "2^23 committed polynomials, two values per column per leaf, base LDE 2^3, merged memory and witness (unified_reduced_machine compression)",
     level: SecurityLevel::Sec100,
@@ -582,20 +586,20 @@ pub const COMPRESSION_2_23: EthproofsSoundcalcEntry = EthproofsSoundcalcEntry {
     max_committed_polys: 128,
     certified_bits: 100,
     binding_term: "batching",
-    base_num_queries: 57,
+    base_num_queries: 59,
     base_queries_pow_bits: 25,
     base_batching_pow_bits: Some(25),
-    base_analysis: jbr(4, 1.33, 91, &[17],
-        "rate 2^-3 makes a Johnson-bound base round certifiable: a 25-bit batching grind lifts its batching term to the target at the ceiling (the binding term); m = 4 gives 1.33 bits/query — 57 queries at 25 bits where unique decoding would need 91; the fold term needs a 17-bit folding grind"),
+    base_analysis: jbr(3, 1.28, 91, &[17],
+        "at rate 2^-3, m = 3 gives 1.28 bits/query and keeps the binding batching term at 100 bits with a 25-bit grind at the width ceiling; the fold term needs 17 PoW bits"),
     rounds: &[
-        round(5, 5, 32, 25, 8, jbr(5, 2.36, 79, &[22, 21, 20, 19, 18],
-            "LDE 2^5 (domain 2^27); m = 5 gives 2.36 bits/query at a 22-bit folding grind — 32 queries at 25 bits where unique decoding would need 79; the OOD term needs 8 PoW bits with a single sample")),
-        round(9, 5, 18, 24, 5, jbr(3, 4.28, 76, &[24, 23, 22, 21, 20],
-            "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^9 (domain 2^26), fold grind 24 bits; 4.28 bits/query")),
-        round(11, 5, 15, 21, 2, jbr(3, 5.28, 76, &[24, 23, 22, 21, 20],
-            "m = 3; LDE 2^11 (domain 2^23), fold grind 24 bits; 5.28 bits/query, 15 queries so that 21 bits of query PoW suffice")),
-        round(13, 4, 12, 25, 0, jbr(3, JOHNSON_R13_BITS_PER_QUERY, 76, &[24, 23, 22, 21],
-            "m = 3; LDE 2^13 (domain 2^20), fold grind 24 bits; 6.28 bits/query, no OOD grind")),
+        round(5, 5, 32, 25, 10, jbr(5, 2.36, 79, &[24, 23, 22, 21, 20],
+            "LDE 2^5 (domain 2^27); m = 5 gives 2.36 bits/query within the 24-bit fold cap; one OOD sample needs 10 PoW bits")),
+        round(8, 5, 20, 25, 6, jbr(3, 3.78, 76, &[23, 22, 21, 20, 19],
+            "m = 3 minimises the (m + 1/2)^5 fold term; LDE 2^8 (domain 2^25), fold grind 23 bits; 3.78 bits/query")),
+        round(10, 5, 16, 24, 3, jbr(3, 4.78, 76, &[23, 22, 21, 20, 19],
+            "m = 3; LDE 2^10 (domain 2^22), fold grind 23 bits; 4.78 bits/query")),
+        round(12, 4, 13, 25, 0, jbr(3, 5.78, 76, &[23, 22, 21, 20],
+            "m = 3; LDE 2^12 (domain 2^19), fold grind 23 bits; 5.78 bits/query, no OOD grind")),
     ],
 };
 
