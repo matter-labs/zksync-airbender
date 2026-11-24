@@ -92,13 +92,18 @@ fn generated_sources(mode: SoundnessMode) -> Vec<(String, String)> {
     )
     .unwrap();
     let data_hash = hex::encode(Keccak256::digest(&data));
-    if mode == SoundnessMode::PessimisticConjecture {
-        assert_eq!(data.len(), 29_210);
-        assert_eq!(
-            data_hash,
-            "7024dc38fe6be11ae2b04cf75f6210dfdaeced21bde20b3e5836c01737528b85"
-        );
-    }
+    let (expected_setup_len, expected_setup_hash) = match mode {
+        SoundnessMode::PessimisticConjecture => (
+            29_210,
+            "7024dc38fe6be11ae2b04cf75f6210dfdaeced21bde20b3e5836c01737528b85",
+        ),
+        SoundnessMode::EthproofsSoundnessCalc => (
+            29_978,
+            "08533672f76282afef58266afb1c35b581bd89810804a18156b076c06d6dc551",
+        ),
+    };
+    assert_eq!(data.len(), expected_setup_len, "{mode:?} setup length");
+    assert_eq!(data_hash, expected_setup_hash, "{mode:?} setup Keccak256");
     // The negative changes only the decoder's pinned PC word.
     assert_eq!(
         contracts.verifier_sol.lines().count(),
