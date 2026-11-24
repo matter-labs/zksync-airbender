@@ -95,7 +95,7 @@ pub fn accumulate_ood_samples<const MAX_POW: usize, const MAX_OOD: usize>(
     (claim_correction, current)
 }
 const INITIAL_QUERY_INDEX_BITS: usize = 25usize;
-const INITIAL_NUM_QUERIES: usize = 57usize;
+const INITIAL_NUM_QUERIES: usize = 59usize;
 #[doc = r" Whether this build opens the base queries as a pruned Merkle"]
 #[doc = r" multiproof (`BlakeMode::merkle_multiproofs`, decided at compile"]
 #[doc = r" time for the build's blake implementation)."]
@@ -322,11 +322,11 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
 use super::common::EXT_DEGREE;
 use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 pub const NUM_INTERNAL_ROUNDS: usize = 3usize;
-const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [22usize, 21usize, 18usize];
-const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [32usize, 512usize, 2048usize];
-const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [5usize, 9usize, 11usize];
+const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [22usize, 20usize, 17usize];
+const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [32usize, 256usize, 1024usize];
+const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [5usize, 8usize, 10usize];
 const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] = [131072usize, 4096usize, 128usize];
-const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [27usize, 26usize, 23usize];
+const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [27usize, 25usize, 22usize];
 const MAX_INTERNAL_FOLD_STEPS: usize = 5usize;
 const MAX_INTERNAL_VALUES_PER_LEAF: usize = 32usize;
 const MAX_INTERNAL_NUM_QUERIES: usize = 32usize;
@@ -535,17 +535,17 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
     }
 }
 const FINAL_FOLD_STEPS: usize = 4usize;
-const FINAL_NUM_QUERIES: usize = 12usize;
+const FINAL_NUM_QUERIES: usize = 13usize;
 const FINAL_VALUES_PER_LEAF: usize = 16usize;
 const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
-const FINAL_QUERY_INDEX_BITS: usize = 16usize;
-const FINAL_RS_DOMAIN_LOG2: usize = 20usize;
-const FINAL_NUM_COSETS: usize = 8192usize;
-const FINAL_NUM_COSETS_LOG2: usize = 13usize;
+const FINAL_QUERY_INDEX_BITS: usize = 15usize;
+const FINAL_RS_DOMAIN_LOG2: usize = 19usize;
+const FINAL_NUM_COSETS: usize = 4096usize;
+const FINAL_NUM_COSETS_LOG2: usize = 12usize;
 const FINAL_COSET_TREE_SIZE: usize = 8usize;
 const FINAL_DRAW_WORDS: usize = 8usize;
 const FINAL_POW_BITS: u32 = 25u32;
-const FINAL_FOLDING_POW_BITS: u32 = 24u32;
+const FINAL_FOLDING_POW_BITS: u32 = 23u32;
 const FINAL_ORACLE_DEPTH_IDX: usize = 3usize;
 const FINAL_ORACLE_DEPTH: usize = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
 #[doc = r" Whether this build opens the final queries as a pruned Merkle"]

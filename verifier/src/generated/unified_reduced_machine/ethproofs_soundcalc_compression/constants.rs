@@ -68,20 +68,20 @@ pub const DRAW_BUF_CAPACITY: usize = {
     }
 };
 pub const WHIR_FOLD_STEPS: [usize; 5usize] = [1usize, 5usize, 5usize, 5usize, 4usize];
-pub const WHIR_QUERIES: [usize; 5usize] = [57usize, 32usize, 18usize, 15usize, 12usize];
-pub const WHIR_POW_BITS: [u32; 5usize] = [25u32, 25u32, 24u32, 21u32, 25u32];
+pub const WHIR_QUERIES: [usize; 5usize] = [59usize, 32usize, 20usize, 16usize, 13usize];
+pub const WHIR_POW_BITS: [u32; 5usize] = [25u32, 25u32, 25u32, 24u32, 25u32];
 #[doc = r" Per round: PoW bits gating each folding-challenge draw (0 = plain draws)."]
-pub const WHIR_FOLDING_POW_BITS: [u32; 5usize] = [17u32, 22u32, 24u32, 24u32, 24u32];
+pub const WHIR_FOLDING_POW_BITS: [u32; 5usize] = [17u32, 24u32, 23u32, 23u32, 23u32];
 #[doc = r" Per intermediate oracle: its out-of-domain sample count and the PoW"]
 #[doc = r" bits gating the OOD point draw (0 = a plain draw)."]
 pub const WHIR_NUM_OOD_SAMPLES: [usize; 4usize] = [1usize, 1usize, 1usize, 1usize];
-pub const WHIR_OOD_POW_BITS: [u32; 4usize] = [8u32, 5u32, 2u32, 0u32];
+pub const WHIR_OOD_POW_BITS: [u32; 4usize] = [10u32, 6u32, 3u32, 0u32];
 #[doc = r" Total OOD samples across the intermediate oracles (the accumulator's"]
 #[doc = r" out-of-domain entry capacity)."]
 pub const WHIR_OOD_ENTRIES: usize = 4usize;
 pub const LOOKUP_CHALLENGES_POW_BITS: u32 = 14u32;
 pub const BATCHED_PROXIMITY_POW_BITS: u32 = 25u32;
-pub const MAX_POW_ENTRIES: usize = 126usize;
+pub const MAX_POW_ENTRIES: usize = 131usize;
 pub const FINAL_MONOMIALS_LEN: usize = 8usize;
 #[allow(dead_code)]
 pub const NUM_ORACLES: usize = 2usize;
@@ -90,7 +90,7 @@ pub const ORACLE_NUM_COLS: [usize; 2usize] = [96usize, 10usize];
 #[allow(dead_code)]
 pub const ORACLE_DEPTHS: [usize; 2usize] = [22usize, 22usize];
 pub const TOTAL_ORACLE_COLS: usize = 106usize;
-pub const WHIR_ORACLE_DEPTHS: [usize; 4usize] = [19usize, 18usize, 15usize, 13usize];
+pub const WHIR_ORACLE_DEPTHS: [usize; 4usize] = [19usize, 17usize, 14usize, 12usize];
 pub const WHIR_CAP_SIZE: usize = 8usize;
 pub const WHIR_CAP_WORDS: usize = 64usize;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
