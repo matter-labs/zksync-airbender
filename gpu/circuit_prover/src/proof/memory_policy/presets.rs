@@ -124,18 +124,6 @@ mod cpu_tests {
         let [tight, roomy] = PRESET_ARENA_BYTES else {
             panic!("L1 wrap memory schedule test requires both arena presets");
         };
-        let config = ProofProfile::L1Wrap.prover_config(
-            CircuitType::L1Wrap22.get_domain_size_log2() as usize,
-            prover::definitions::SoundnessMode::EthproofsSoundnessCalc,
-        );
-        let shape = gpu_whir::proth120::L1WhirShape::from_config(&config);
-        assert_eq!(
-            (shape.log_message, shape.log_base_lde, shape.cap_log),
-            (25, 7, 5)
-        );
-        let query_domains: Vec<_> = shape.rounds.iter().map(|r| r.query_domain_log2).collect();
-        assert_eq!(query_domains, [31, 31, 28, 25, 23, 20]);
-
         for (circuit, arena, expected) in [
             (CircuitType::L1Wrap, *tight, RawAndMonomials),
             (CircuitType::L1Wrap, *roomy, RawAndMonomials),

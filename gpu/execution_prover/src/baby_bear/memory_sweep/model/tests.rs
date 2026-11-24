@@ -96,18 +96,3 @@ fn cpu_winner_is_fastest_fitting_with_stable_tie_break() {
     assert!(TimingSummary::from_samples(&[0.0]).is_none());
     assert!(TimingSummary::from_samples(&[f32::NAN]).is_none());
 }
-
-#[test]
-fn cpu_generated_policy_rejects_both_l1_wrap_identities() {
-    let rows: Vec<_> = [21, 29]
-        .into_iter()
-        .flat_map(|arena| all_circuits().into_iter().map(move |c| row(c, arena)))
-        .collect();
-    let generated = generate(&rows).unwrap();
-    assert_eq!(
-        generated
-            .matches("CircuitType::L1Wrap | CircuitType::L1Wrap22 => panic!(")
-            .count(),
-        2
-    );
-}

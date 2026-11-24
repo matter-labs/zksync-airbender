@@ -29,10 +29,6 @@ pub(crate) fn schedule_l1_wrap_phase_one<'a>(
         tracing_data,
         operation_mode,
     } = request;
-    assert!(
-        circuit_type.is_l1_wrap(),
-        "Proth120 GPU requires an L1 wrap circuit type, got {circuit_type:?}"
-    );
     let precomputed = Arc::clone(precomputations.l1_wrap());
     assert_eq!(
         precomputed.circuit_type, circuit_type,
