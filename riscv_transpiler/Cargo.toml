@@ -11,6 +11,9 @@ categories.workspace = true
 
 [dependencies]
 common_constants = { workspace = true }
+# parameters of the zero-knowledge masking sequence, for its responder in `oracle::zk_masking`
+riscv_common = { workspace = true }
+rand = { workspace = true, features = ["std", "std_rng", "os_rng"] }
 field = { workspace = true }
 blake2s_u32 = { workspace = true }
 ruint = { version = "1.16" }
