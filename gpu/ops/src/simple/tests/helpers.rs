@@ -2,7 +2,7 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use gpu_core::primitives::field::{BF, E2, E4};
+use gpu_core::primitives::field::{BF, E2, E4, PR};
 
 use crate::upstream::Field;
 use itertools::Itertools;
@@ -215,6 +215,29 @@ pub(super) const E4_VALUES: [E4; 6] = [
     E4::new(E2_VALUES[3], E2_VALUES[3]),
     E4::new(E2_VALUES[4], E2_VALUES[4]),
     E4::new(E2_VALUES[5], E2_VALUES[5]),
+];
+
+pub(super) const PR_VALUES: [PR; 20] = [
+    PR::ZERO,
+    PR::ONE,
+    PR::TWO,
+    PR::MINUS_ONE,
+    PR::new(PR::ORDER - 2),
+    PR::new(1 << 64),
+    PR::new(1 << 120),
+    PR::from_u128_with_reduction(u128::MAX),
+    PR::from_raw_u128((1 << 32) - 1),
+    PR::from_raw_u128(1 << 32),
+    PR::from_raw_u128((1 << 32) + 1),
+    PR::from_raw_u128((1 << 64) - 1),
+    PR::from_raw_u128(1 << 64),
+    PR::from_raw_u128((1 << 64) + 1),
+    PR::from_raw_u128((1 << 96) - 1),
+    PR::from_raw_u128(1 << 96),
+    PR::from_raw_u128((1 << 96) + 1),
+    PR::from_raw_u128((1 << 120) - 1),
+    PR::from_raw_u128(1 << 120),
+    PR::from_raw_u128((1 << 120) + 1),
 ];
 
 pub(super) fn get_values<T: Field>(count: usize, additional_values: &[T]) -> Vec<T> {

@@ -6,7 +6,7 @@
 /// includes `nvtx3/nvToolsExt.h` from the Toolkit, hence the `no_cuda` skip.
 ///
 /// Under the `bench` feature it additionally builds the field micro-benchmark
-/// CUDA archive (`native/bench/field.cu` → `gpu_core_bench_native`). gpu_core
+/// CUDA archive (`native/baby_bear/bench/field.cu` → `gpu_core_bench_native`). gpu_core
 /// has no production kernels, so this is the crate's only CUDA compilation and
 /// is entirely bench-gated.
 fn main() {
@@ -36,7 +36,7 @@ fn main() {
     println!("cargo:include={}", headers.display());
     println!("cargo:rerun-if-changed=native_headers");
 
-    // The bench kernels `#include "primitives/field.cuh"`, so the archive needs
+    // The bench kernels `#include "primitives/baby_bear/field.cuh"`, so the archive needs
     // gpu_core's own `native_headers` on its include path — there is no
     // `DEP_GPU_CORE_NATIVE_INCLUDE` for gpu_core itself, so pass it explicitly.
     if env::var_os("CARGO_FEATURE_BENCH").is_some() {

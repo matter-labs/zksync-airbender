@@ -25,8 +25,8 @@ workspace-root `gkr_eval_ir`), and `gpu_native_build` (the shared build-script h
   kernels. Its headers are a complete library on purpose: the PTX cache-operator set,
   u32 and u64 carry chains, the field operations (incl. `e6`) and the full accessor
   matrix stay even when unused in-project. Broken or incomplete vestiges may still go.
-- **`gpu_ntt`**: NTT launchers, twiddles and `native/ntt`; exports `native/` so
-  `gpu_whir` can include `whir_leaf_transform.cuh`.
+- **`gpu_ntt`**: NTT launchers and twiddles; exports `native/` so `gpu_whir` can
+  include `baby_bear/whir_leaf_transform.cuh`.
 - **`gpu_ops`**: generic math and transform kernels. `bit_reverse_in_place<T>` is
   size-generic (4/16/32-byte elements) and asserts payload alignment.
 - **`gpu_hash`**: blake2s hashing, Merkle trees, gather and the Fiat-Shamir transcript
@@ -37,11 +37,19 @@ workspace-root `gkr_eval_ir`), and `gpu_native_build` (the shared build-script h
 - **`gpu_prover_context`**: `ProverContext` (device and host allocators, `exec_stream`,
   `h2d_stream`, NTT twiddles) and the H2D `Transfer`. Every crate from `gpu_trace` up
   threads a `&ProverContext` through its scheduling functions.
-- **`gpu_trace`**: witness generation and trace commit/holder; owns the
-  upstream-constant drift guards (`src/witness/mod.rs`).
+- **`gpu_trace`**: witness generation and trace commit/holder; field-specific code
+  lives in `native/{baby_bear,proth120}/` and `src/{baby_bear,proth120}/`, with shared
+  native headers in `native/witness/` and shared Rust in `src/{trace,witness}/`.
+  Owns the upstream-constant drift guards (`src/witness/mod.rs`).
 - **`gpu_gkr`**: the GKR engine and the GKR/WHIR protocol kernels; holds the
-  cluster's `__constant__` symbols and exports its headers for `gpu_whir`.
+  cluster's `__constant__` symbols and exports its headers for `gpu_whir`. Shared
+  code stays at the crate root; field implementations live in Rust
+  `src/{baby_bear,proth120}/` and native `{gkr,ops}/{baby_bear,proth120}/` trees
+  within one `gpu_gkr_native` archive.
 - **`gpu_whir`**: WHIR folds, PoW and query scheduling, and the recursive WHIR oracle.
+  Field-specific Rust and native sources live in parallel `baby_bear/` and
+  `proth120/` folders; generic PoW helpers and native fold/in-domain templates
+  stay at their respective roots. Both native fields feed `gpu_whir_native`.
 - **`circuit_prover`**: proof orchestration and config over the crates above; no
   native code.
 - **`execution_prover`** (`gpu_execution_prover`): implements the root
@@ -59,6 +67,10 @@ because a dependency's `#[cfg(test)]` items are invisible to its consumers.
   include dirs propagate as `DEP_<X>_NATIVE_INCLUDE`. Shared CMake configuration is
   `native_build/cmake/ab_cuda_target.cmake`; change behavior for all kernel crates
   there.
+- **Field layout:** code shared by BabyBear and Proth120 lives at the crate root;
+  field-specific Rust and native code lives in parallel `baby_bear/` and `proth120/`
+  folders. Top-level or nested `CMakeLists.txt` files add native field sources to
+  the crate's single CUDA archive.
 - **C++ namespace = owning crate** (`airbender::{hash, ntt, ops, primitives,
   trace::witness, gkr, whir}`). Launched kernels are `extern "C"`: the bare symbol
   name is the ABI.

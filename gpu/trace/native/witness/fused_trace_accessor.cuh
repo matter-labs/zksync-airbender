@@ -10,6 +10,8 @@ namespace airbender::trace::witness {
 // them. Keep the pointer non-restrict: fixed generation, generated continuation,
 // and lookup mapping are consecutive phases over one materialized row.
 template <typename T, ld_modifier LD, st_modifier ST> struct FusedTraceAccessor {
+  using value_type = T;
+
   T *ptr;
   unsigned stride;
 

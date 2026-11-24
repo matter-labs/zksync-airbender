@@ -4,36 +4,39 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 
-use gpu_core::primitives::field::E4;
+use gpu_core::primitives::field::{E4, PR};
 
 cuda_kernel_signature_arguments_and_function!(
-    SquaringSequenceE4,
-    base: *const E4,
-    result: *mut E4,
+    SquaringSequence<T>,
+    base: *const T,
+    result: *mut T,
     count: u32,
 );
 
-cuda_kernel_declaration!(
-    ab_squaring_sequence_e4_kernel(
-        base: *const E4,
-        result: *mut E4,
-        count: u32,
-    )
-);
+macro_rules! squaring_sequence {
+    ($name:ident, $field:ty, $kernel:ident) => {
+        cuda_kernel_declaration!(
+            $kernel(base: *const $field, result: *mut $field, count: u32)
+        );
 
-pub fn squaring_sequence_e4(
-    base: &DeviceVariable<E4>,
-    result: &mut DeviceSlice<E4>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert!(result.len() <= u32::MAX as usize);
-    let count = result.len() as u32;
-    // The kernel runs as a single-thread sequential loop because the squaring
-    // chain has serial data dependency and `count == log_n` is small (~25).
-    let config = CudaLaunchConfig::basic(1, 1, stream);
-    let args = SquaringSequenceE4Arguments::new(base.as_ptr(), result.as_mut_ptr(), count);
-    SquaringSequenceE4Function(ab_squaring_sequence_e4_kernel).launch(&config, &args)
+        pub fn $name(
+            base: &DeviceVariable<$field>,
+            result: &mut DeviceSlice<$field>,
+            stream: &CudaStream,
+        ) -> CudaResult<()> {
+            assert!(result.len() <= u32::MAX as usize);
+            let count = result.len() as u32;
+            // The kernel runs as a single-thread sequential loop because the squaring
+            // chain has serial data dependency and `count == log_n` is small (~25).
+            let config = CudaLaunchConfig::basic(1, 1, stream);
+            let args = SquaringSequenceArguments::new(base.as_ptr(), result.as_mut_ptr(), count);
+            SquaringSequenceFunction($kernel).launch(&config, &args)
+        }
+    };
 }
+
+squaring_sequence!(squaring_sequence_e4, E4, ab_squaring_sequence_e4_kernel);
+squaring_sequence!(squaring_sequence_pr, PR, ab_squaring_sequence_pr_kernel);
 
 #[cfg(test)]
 mod tests {
@@ -71,5 +74,28 @@ mod tests {
         memory_copy_async(&mut h_result[..], &d_result[..], &stream).unwrap();
         stream.synchronize().unwrap();
         assert_eq!(host_seq, h_result);
+    }
+
+    #[test]
+    fn squaring_sequence_pr_matches_host() {
+        let mut base = PR::from_u128_with_reduction(0x0123_4567_89ab_cdef_fedc_ba98_7654_3210);
+        base.add_assign(&PR::ONE);
+        for count in [0usize, 1, 31] {
+            let mut host_seq = Vec::with_capacity(count);
+            let mut p = base;
+            for _ in 0..count {
+                host_seq.push(p);
+                p.square();
+            }
+            let stream = CudaStream::default();
+            let mut d_base = DeviceAllocation::alloc(1).unwrap();
+            memory_copy_async(&mut d_base[..], &[base], &stream).unwrap();
+            let mut d_result = DeviceAllocation::alloc(count.max(1)).unwrap();
+            squaring_sequence_pr(&d_base[0], &mut d_result[..count], &stream).unwrap();
+            let mut h_result = vec![PR::ZERO; count];
+            memory_copy_async(&mut h_result[..], &d_result[..count], &stream).unwrap();
+            stream.synchronize().unwrap();
+            assert_eq!(host_seq, h_result, "count = {count}");
+        }
     }
 }

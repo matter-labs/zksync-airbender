@@ -1,8 +1,8 @@
 pub mod presets;
 
-pub use gpu_gkr::forward::GkrMemoryPolicy;
+pub use gpu_gkr::forward::recompute::GkrMemoryPolicy;
 pub use gpu_trace::trace::holder::{
-    OpeningStrategy, WitnessCommitmentStrategy, WitnessPostCommitStorage,
+    OpeningStrategy, PartialTreePolicy, WitnessCommitmentStrategy, WitnessPostCommitStorage,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -10,6 +10,7 @@ pub enum WitnessOpeningStrategy {
     #[default]
     ReuseCosets,
     Recompute(OpeningStrategy),
+    PackedCosetRecompute,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -23,6 +24,15 @@ impl WitnessMemoryPolicy {
     pub const fn is_valid(self) -> bool {
         use WitnessCommitmentStrategy as Commit;
         use WitnessPostCommitStorage as Store;
+        if matches!(self.opening, WitnessOpeningStrategy::PackedCosetRecompute) {
+            return matches!(
+                (self.commitment, self.post_commitment),
+                (
+                    Commit::PerCoset,
+                    Store::RawAndMonomials | Store::RawWithReusedPrefixScratch
+                )
+            );
+        }
         let storage_available = matches!(
             (self.commitment, self.post_commitment),
             (Commit::AllCosets, _)

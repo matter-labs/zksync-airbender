@@ -103,6 +103,31 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 &abort,
             )
         };
+        acc.partial_tree_allocator_requests = (!proving
+            && cache.is_some()
+            && execution_kind.unified_circuit().is_some()
+            && self.backend.persists_memory_partial_trees(profile))
+        .then(|| {
+            let (requests, sequence_ids) = unbounded();
+            let free_allocators = self.free_allocators_receiver.clone();
+            let results = work_results_sender.clone();
+            spawn_abort_on_panic(format!("ab-partial-tree-allocator-{batch_id}"), move || {
+                for sequence_id in sequence_ids {
+                    let allocator = free_allocators
+                        .recv()
+                        .expect("partial-tree free allocator channel closed");
+                    results
+                        .send(WorkerResult::PartialTreeAllocator {
+                            sequence_id,
+                            allocator,
+                        })
+                        .expect(
+                            "worker results channel closed while sending a partial-tree allocator",
+                        );
+                }
+            });
+            requests
+        });
         drop(work_results_sender);
 
         let request_context = RequestContext {
@@ -178,8 +203,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 proving,
                 batch_id,
             );
+            if work_requests_sender.is_none() {
+                acc.partial_tree_allocator_requests = None;
+            }
         }
 
+        assert!(acc.unpaired_unified_partial_tree_allocators.is_empty());
         assert_eq!(acc.pending_requests_count, 0);
         if abort_signaled {
             std::mem::take(&mut acc.uninitialized_tracing_data)
@@ -427,6 +456,7 @@ mod tests {
                 sequence_id: 0,
                 inits_and_teardowns: None,
             }),
+            None,
             None,
         );
     }

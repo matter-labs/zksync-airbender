@@ -50,18 +50,24 @@ clap = { workspace = true, optional = true }
 csv = { version = "1", optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
+sha3 = { workspace = true, optional = true }
 
 [features]
-memory_sweep = ["dep:clap", "dep:csv", "dep:serde", "dep:serde_json"]
+memory_sweep = ["dep:clap", "dep:csv", "dep:serde", "dep:serde_json", "dep:sha3"]
 default = ["deterministic_pow"]
 deterministic_pow = ["gpu_circuit_prover/deterministic_pow"]
 verifiers = ["full_statement_verifier/verifiers"]
 
 [dev-dependencies]
+proof_fixtures = { workspace = true }
+prover = { workspace = true, features = ["deterministic_pow"] }
+# CPU/proof byte parity requires the minimum nonce in test builds.
+gpu_hash = { workspace = true, features = ["deterministic_pow"] }
 env_logger = "0.11"
+gpu_whir = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
-cpu_execution_prover = { workspace = true }
+cpu_execution_prover = { workspace = true, features = ["test-support"] }
 program_prover = { workspace = true, features = [
     "timing_logs",
     "gkr_self_checks",

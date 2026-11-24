@@ -9,6 +9,20 @@ type ProofArtifacts = (
 );
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
+    /// Challenge oracle for backend commitment parity.
+    #[doc(hidden)]
+    pub fn external_challenges(
+        &self,
+        commitment: &CommitMemoryResult,
+    ) -> GKRExternalChallenges<BF, E4> {
+        assert!(
+            self.host_pool_allocation.is_none() && self.pending_setup_initializations.is_empty(),
+            "setup must be finalized before proving or reading artifacts"
+        );
+        self.derive_proof_artifacts(commitment.binary_handle.0, commitment)
+            .1
+    }
+
     fn derive_proof_artifacts(
         &self,
         binary_key: usize,
@@ -388,5 +402,38 @@ mod tests {
             );
             assert_eq!(ct, expected);
         }
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn cpu_partial_tree_allocators_return_to_the_pool() {
+        use crate::test_support::TestBackend;
+        use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+
+        let program = vec![0x0001_2083, 0xffdf_f06f]; // lw x1, 0(x2); jal x0, -4
+        let profile = ProofProfile::Standard;
+        let configuration = ExecutionProverConfiguration {
+            ram_config: riscv_transpiler::jit::JitRunnerRam::Tiny,
+            ..Default::default()
+        };
+        let mut prover = ExecutionProver::<TestBackend>::with_configuration(configuration);
+        let handle = prover.add_binary_variants(
+            program.clone(),
+            program,
+            &[(ExecutionKind::Unified, MachineType::Reduced, &[profile])],
+            Some(32),
+        )[0];
+        prover.finalize_setup();
+        let free_buffers = prover.free_allocators_sender.len();
+        let source = || QuasiUARTSource::new_with_reads(vec![]);
+
+        prover.commit_memory_and_prove(8031, &handle, source(), profile);
+        assert!(prover.backend().allocated_partial_trees());
+        assert_eq!(prover.free_allocators_sender.len(), free_buffers);
+
+        let ticket = prover.commit_memory(8032, &handle, source(), profile);
+        assert_eq!(prover.free_allocators_sender.len(), free_buffers);
+        prover.prove(8032, ticket, source());
+        assert_eq!(prover.free_allocators_sender.len(), free_buffers);
     }
 }

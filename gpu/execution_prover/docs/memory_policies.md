@@ -73,9 +73,11 @@ timing for diagnostics.
 Generation requires a timed, fitting winner for every circuit at each included
 budget. Include only the budgets intended for installation.
 
-Review the results, then copy the generated Rust to `gpu/circuit_prover/src/proof/memory_policy/presets/generated.rs`,
-format and rebuild. Its arena list determines automatic allocation; its exhaustive
-circuit matches select each policy. Validate each installed preset with
+Review the results, then copy the generated Rust to `gpu/circuit_prover/src/baby_bear/presets/generated.rs`,
+format and rebuild. Update `PRESET_ARENA_BYTES` in
+`gpu/circuit_prover/src/proof/memory_policy/presets.rs` to the installed arena
+budgets. Automatic allocation uses that list, and the generated circuit matches
+select each policy. Validate each installed preset with
 `--replay-presets` and the same budget/circuit/output arguments. Replay exercises
 installed preset selection and produces no preferred rows. Compare fingerprints,
 peaks and paired proof times before shipping.

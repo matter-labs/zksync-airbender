@@ -4,10 +4,10 @@
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 use era_criterion_cuda::CudaMeasurement;
 use era_cudart::stream::CudaStream;
-use gpu_ntt::bench::{is_valid, DitBenchHarness, LaunchCfg, TOTAL_LOG};
+use gpu_ntt::baby_bear::bench::{is_valid, DitBenchHarness, LaunchCfg, TOTAL_LOG};
 
 // Wrapper matrices (must match the bench-gated EXTERN symbol set in
-// `gpu/ntt/native/bench/dit_bench_kernels.cu` + the production two-pass stream
+// `gpu/ntt/native/baby_bear/bench/dit_bench_kernels.cu` + the production two-pass stream
 // symbols). Two-pass covers log_n in [8, 13]; single-pass covers log_n in [2, 8].
 const TWO_PASS_CONFIGS: &[(usize, usize)] = &[
     (9, 3),

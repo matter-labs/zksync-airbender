@@ -277,7 +277,10 @@ fn handle_worker_result(
         let circuit_type = result.circuit_type();
         let sequence_id = result.sequence_id();
         match &result {
-            GpuWorkResult::L1WrapProof(_) => unimplemented!("L1 wrap GPU proof result handling"),
+            GpuWorkResult::L1WrapProof(result) => {
+                assert_eq!(result.batch_id, batch_id);
+                trace!("BATCH[{batch_id}] GPU_MANAGER received L1 wrap proof from GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]");
+            }
             GpuWorkResult::MemoryCommitment(result) => {
                 assert_eq!(result.batch_id, batch_id);
                 trace!("BATCH[{batch_id}] GPU_MANAGER received memory commitment for circuit {circuit_type:?}[{sequence_id}] from GPU_WORKER[{worker_id}]");

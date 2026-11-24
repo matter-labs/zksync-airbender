@@ -56,6 +56,12 @@ DEVICE_FORCEINLINE u32 madc_lo_cc(const u32 x, const u32 y, const u32 z) {
   return result;
 }
 
+DEVICE_FORCEINLINE u32 add(u32 a, u32 b) {
+  u32 r;
+  asm volatile("add.u32 %0, %1, %2;" : "=r"(r) : "r"(a), "r"(b));
+  return r;
+}
+
 DEVICE_FORCEINLINE u32 addc(u32 a, u32 b) {
   u32 r;
   asm volatile("addc.u32 %0, %1, %2;" : "=r"(r) : "r"(a), "r"(b));
@@ -71,6 +77,30 @@ DEVICE_FORCEINLINE u32 add_cc(u32 a, u32 b) {
 DEVICE_FORCEINLINE u32 addc_cc(u32 a, u32 b) {
   u32 r;
   asm volatile("addc.cc.u32 %0, %1, %2;" : "=r"(r) : "r"(a), "r"(b));
+  return r;
+}
+
+DEVICE_FORCEINLINE u32 sub(u32 a, u32 b) {
+  u32 r;
+  asm volatile("sub.u32 %0, %1, %2;" : "=r"(r) : "r"(a), "r"(b));
+  return r;
+}
+
+DEVICE_FORCEINLINE u32 sub_cc(u32 a, u32 b) {
+  u32 r;
+  asm volatile("sub.cc.u32 %0, %1, %2;" : "=r"(r) : "r"(a), "r"(b));
+  return r;
+}
+
+DEVICE_FORCEINLINE u32 subc(u32 a, u32 b) {
+  u32 r;
+  asm volatile("subc.u32 %0, %1, %2;" : "=r"(r) : "r"(a), "r"(b));
+  return r;
+}
+
+DEVICE_FORCEINLINE u32 subc_cc(u32 a, u32 b) {
+  u32 r;
+  asm volatile("subc.cc.u32 %0, %1, %2;" : "=r"(r) : "r"(a), "r"(b));
   return r;
 }
 

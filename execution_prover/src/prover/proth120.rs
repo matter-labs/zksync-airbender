@@ -48,6 +48,9 @@ fn collect_l1_wrap_trace<A: HostTraceAllocator>(
             WorkerResult::SnapshotReplayed(index) => {
                 assert!(replayed.insert(index), "duplicate L1Wrap replay completion");
             }
+            WorkerResult::PartialTreeAllocator { .. } => {
+                panic!("unexpected partial-tree allocator during L1Wrap tracing")
+            }
             WorkerResult::BackendWorkResult(_) => {
                 panic!("unexpected backend result during L1Wrap tracing")
             }

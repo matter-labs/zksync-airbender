@@ -36,6 +36,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                 sequence_id,
                 inits_and_teardowns,
                 tracing_data,
+                memory_partial_trees,
             } = entry;
             if matches!(
                 circuit_type,
@@ -77,6 +78,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                 external_challenges: *external_challenges
                     .expect("proof cache seeding requires external challenges"),
                 memory_caps,
+                memory_partial_trees,
                 profile,
             };
             let request = WorkRequest::Proof(request);

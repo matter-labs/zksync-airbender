@@ -13,6 +13,7 @@ links = "gpu_gkr_native"
 
 [dependencies]
 gpu_core = { workspace = true }
+gpu_ntt = { workspace = true }
 gpu_ops = { workspace = true }
 gpu_hash = { workspace = true }
 gpu_prover_context = { workspace = true }
@@ -33,11 +34,16 @@ field = { workspace = true }
 gpu_native_build = { workspace = true }
 
 [dev-dependencies]
+prover = { workspace = true, features = ["deterministic_pow"] }
+# CPU/proof byte parity requires the minimum nonce in test builds.
+gpu_hash = { workspace = true, features = ["deterministic_pow"] }
+gpu_gkr_compiler = { workspace = true, features = ["search"] }
 worker = { workspace = true }
 fft = { workspace = true }
 rand = "0.9"
 itertools = "0.14"
 serde_json = "1"
+serde = { workspace = true }
 
 [lints]
 workspace = true

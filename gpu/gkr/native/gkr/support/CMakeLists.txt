@@ -1,8 +1,8 @@
 target_sources(gpu_gkr_native PRIVATE
         descriptors.cuh
-        eq_constant_storage.cu
+        eq_high_low.cuh
         eq_inline.cuh
-        gkr_initial_inner_products.cu
+        initial_inner_product.cuh
         kernel_helpers.cuh
         lookup_helpers.cuh
 )

@@ -12,7 +12,7 @@ use gpu_core::primitives::context::{
     DeviceAllocation, DeviceAllocator, DeviceProperties, HostAllocation, HostAllocator,
     UnsafeMutAccessor,
 };
-use gpu_ntt::ntt_twiddles::DeviceContext;
+use gpu_ntt::baby_bear::twiddles::DeviceContext;
 use log::error;
 use std::ops::Range;
 

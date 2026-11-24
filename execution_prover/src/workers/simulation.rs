@@ -170,7 +170,7 @@ pub(crate) fn run_simulator<
             (unified_circuit, empty_circuits)
         };
         for (sequence_id, inits_and_teardowns_data) in partitioning
-            .into_chunks(memory, timestamps, worker, free_allocators)
+            .into_chunks(memory, timestamps, worker, free_allocators.clone())
             .enumerate()
         {
             let sequence_id = sequence_id + sequence_id_offset;

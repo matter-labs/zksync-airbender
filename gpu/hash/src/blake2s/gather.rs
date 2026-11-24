@@ -13,7 +13,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
-use super::{checked_u32, Digest, STATE_SIZE};
+use super::{assert_reduction_layers, checked_u32, partial_path_block_config, Digest, STATE_SIZE};
 use gpu_core::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
@@ -512,6 +512,21 @@ cuda_kernel!(
     )
 );
 
+cuda_kernel!(
+    GatherMerklePathsPartialForQueriesPhysicalBlock,
+    ab_gather_merkle_paths_partial_for_queries_physical_block_kernel(
+        desc: OraclePartialPathDesc,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_total_leaves_count: u32,
+        stride_per_coset_in_digests: u32,
+        layers_count: u32,
+        reduction_layers: u32,
+        query_indexes: *const u32,
+        indexes_count: u32,
+    )
+);
+
 /// Gather one oracle's paths from bitreversed codewords. Bottom-layer hashing
 /// reads logical leaf `l` from the physical block `bitreverse(l)`.
 pub fn gather_merkle_paths_partial_for_queries_physical(
@@ -520,14 +535,15 @@ pub fn gather_merkle_paths_partial_for_queries_physical(
     log_rows_per_leaf: u32,
     log_total_leaves_count: u32,
     layers_count: u32,
+    reduction_layers: u32,
     query_indexes: &DeviceSlice<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(layers_count >= LOG_WARP_SIZE);
-    assert!(log_total_leaves_count >= LOG_WARP_SIZE);
+    assert_reduction_layers(reduction_layers);
+    assert!(layers_count >= reduction_layers);
     assert!(layers_count <= log_total_leaves_count);
     let indexes_count = checked_u32(query_indexes.len());
-    let stride_per_coset_in_digests = 1u32 << (log_total_leaves_count + 1 - LOG_WARP_SIZE);
+    let stride_per_coset_in_digests = 1u32 << (log_total_leaves_count + 1 - reduction_layers);
     if indexes_count == 0 || desc.columns_count == 0 {
         return Ok(());
     }
@@ -536,6 +552,22 @@ pub fn gather_merkle_paths_partial_for_queries_physical(
         0,
         "slab_dst_ptr must be 32-byte aligned"
     );
+    if reduction_layers != LOG_WARP_SIZE {
+        let config = partial_path_block_config((indexes_count, 1), reduction_layers, stream);
+        let args = GatherMerklePathsPartialForQueriesPhysicalBlockArguments::new(
+            desc,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_total_leaves_count,
+            stride_per_coset_in_digests,
+            layers_count,
+            reduction_layers,
+            query_indexes.as_ptr(),
+            indexes_count,
+        );
+        return GatherMerklePathsPartialForQueriesPhysicalBlockFunction::default()
+            .launch(&config, &args);
+    }
     let grid_dim = indexes_count;
     let block_dim = WARP_SIZE;
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
@@ -1087,6 +1119,22 @@ cuda_kernel!(
     )
 );
 
+cuda_kernel!(
+    GatherMerklePathsFromRowsPhysicalBlock,
+    ab_gather_merkle_paths_from_rows_physical_block_kernel(
+        indexes: *const u32,
+        indexes_count: u32,
+        values: *const BF,
+        log_rows_per_leaf: u32,
+        cols_count: u32,
+        log_total_leaves_count: u32,
+        tree_bottom: *const Digest,
+        layers_count: u32,
+        reduction_layers: u32,
+        merkle_paths: *mut Digest,
+    )
+);
+
 /// LSB sibling of [`gather_merkle_paths_from_rows`]: `values` is the
 /// BITREVERSED-order codeword of one coset, so the on-the-fly bottom-layer
 /// hashing reads logical leaf `l` from the physical block `bitreverse(l)`.
@@ -1101,8 +1149,10 @@ pub fn gather_merkle_paths_from_rows_physical(
     tree_bottom: &DeviceSlice<Digest>,
     merkle_paths: &mut DeviceSlice<Digest>,
     layers_count: u32,
+    reduction_layers: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    assert_reduction_layers(reduction_layers);
     let values_len = values.len();
     assert_eq!(values_len % cols_count, 0);
     let rows_count = values_len / cols_count;
@@ -1110,17 +1160,40 @@ pub fn gather_merkle_paths_from_rows_physical(
     let log_rows_count = rows_count.trailing_zeros();
     assert!(log_rows_count >= log_rows_per_leaf);
     let indexes_count = checked_u32(indexes.len());
-    assert!(layers_count >= LOG_WARP_SIZE);
+    assert!(layers_count >= reduction_layers);
     assert_eq!(indexes.len() * layers_count as usize, merkle_paths.len());
     let cols_count = checked_u32(cols_count);
     let log_total_leaves_count = log_rows_count - log_rows_per_leaf;
     assert!(layers_count <= log_total_leaves_count);
-    assert!(tree_bottom.len() >= 1usize << (log_total_leaves_count + 1 - LOG_WARP_SIZE));
-    let config = CudaLaunchConfig::basic(indexes_count, WARP_SIZE, stream);
+    assert!(tree_bottom.len() >= 1usize << (log_total_leaves_count + 1 - reduction_layers));
     let indexes = indexes.as_ptr();
     let values = values.as_ptr();
     let tree_bottom = tree_bottom.as_ptr();
     let merkle_paths = merkle_paths.as_mut_ptr();
+    if indexes_count == 0 {
+        return Ok(());
+    }
+    if reduction_layers != LOG_WARP_SIZE {
+        assert!(
+            !bit_reverse_indexes,
+            "bitreversed indexes require {LOG_WARP_SIZE} reduction layers"
+        );
+        let config = partial_path_block_config((indexes_count, 1), reduction_layers, stream);
+        let args = GatherMerklePathsFromRowsPhysicalBlockArguments::new(
+            indexes,
+            indexes_count,
+            values,
+            log_rows_per_leaf,
+            cols_count,
+            log_total_leaves_count,
+            tree_bottom,
+            layers_count,
+            reduction_layers,
+            merkle_paths,
+        );
+        return GatherMerklePathsFromRowsPhysicalBlockFunction::default().launch(&config, &args);
+    }
+    let config = CudaLaunchConfig::basic(indexes_count, WARP_SIZE, stream);
     let args = GatherMerklePathsFromRowsPhysicalArguments::new(
         indexes,
         indexes_count,

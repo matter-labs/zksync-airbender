@@ -1,11 +1,14 @@
-//! Crate-local test-context builder.
+//! Field-independent test support and test-context builders.
 //!
 //! `gpu_whir`'s own unit tests need a `ProverContext`; the apex crate's
 //! `prover::test_utils::make_test_context` stays in `gpu_circuit_prover` (it is
 //! shared by the apex e2e suite and can't move down without dragging the proof
 //! layer). This self-contained copy mirrors that helper.
 
+use era_cudart::{memory::memory_copy_async, result::CudaResult, slice::DeviceSlice};
+use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
+use prover::gkr::prover_config::ProofProfile;
 
 const TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
 
@@ -43,4 +46,56 @@ pub(crate) fn make_test_context_with_device_allocator_block_log_size(
         config.small_allocator_log_chunk_size = None;
     }
     ProverContext::new(&config).unwrap()
+}
+
+/// The intermediate WHIR oracles of the 2^22 compression, from its config:
+/// `(log_n, log_v, lde_factor, cap_size)` per oracle.
+pub(crate) fn compression_oracle_shapes() -> Vec<(u32, u32, usize, usize)> {
+    let config = ProofProfile::CompressionFinal.prover_config(
+        22,
+        prover::definitions::SoundnessMode::PessimisticConjecture,
+    );
+    let schedule = &config.whir_schedule;
+    let steps = &schedule.fold_steps();
+    assert_eq!(steps.len(), schedule.intermediate_lde_factors().len() + 1);
+    let mut log_n = config.trace_len_log2 as u32;
+    schedule
+        .intermediate_lde_factors()
+        .iter()
+        .enumerate()
+        .map(|(round, &lde_factor)| {
+            log_n -= steps[round] as u32;
+            (
+                log_n,
+                steps[round + 1] as u32,
+                lde_factor,
+                schedule.cap_size,
+            )
+        })
+        .collect()
+}
+
+pub(crate) fn copy_small_to_device<T: Copy>(
+    dst: &mut DeviceSlice<T>,
+    values: &[T],
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert_eq!(dst.len(), values.len());
+    let host = alloc_static_pinned_box_from_slice(values)?;
+    memory_copy_async(dst, &host[..], context.get_exec_stream())
+}
+
+pub(crate) fn copy_back<T: Clone>(values: &DeviceSlice<T>, context: &ProverContext) -> Vec<T> {
+    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
+    memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    unsafe { host.get_accessor().get().to_vec() }
+}
+
+pub(crate) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
+    if num_bits == 0 {
+        debug_assert_eq!(index, 0);
+        return 0;
+    }
+    index.reverse_bits() >> (usize::BITS - num_bits)
 }

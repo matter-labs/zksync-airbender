@@ -11,6 +11,7 @@ pub const GKR_ROUNDS: usize = 24usize;
 #[doc = r" base commitment (`TRACE_LEN_LOG2 + pack_log2`, the committed column"]
 #[doc = r" size the WHIR point has). Equals `GKR_ROUNDS` when unpacked."]
 pub const CLAIM_POINT_CAPACITY: usize = 24usize;
+#[allow(dead_code)]
 pub const TRACE_LEN_LOG2: u32 = 24u32;
 pub const GKR_ADDRS: usize = 74usize;
 #[allow(dead_code)]

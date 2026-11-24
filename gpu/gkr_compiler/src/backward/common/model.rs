@@ -6,6 +6,7 @@
 
 use std::cmp::Ordering;
 
+use field::proth120::Proth120;
 use field::{Field, PrimeField};
 use gkr_eval_ir::{
     ChallengeKey, ChallengePower, ChallengeRef, ExprId, FieldKind, PermutationSlot, ReadPlace,
@@ -13,7 +14,49 @@ use gkr_eval_ir::{
 };
 
 use super::source::OriginLeaf;
-use super::{Bf, Ext};
+use super::Bf;
+use crate::{ElementModel, FieldTag};
+
+fn scalar_add<F: PrimeField>(a: u128, b: u128) -> u128 {
+    let mut sum = F::from_u128_with_reduction(a);
+    sum.add_assign(&F::from_u128_with_reduction(b));
+    sum.as_u128_reduced()
+}
+
+fn scalar_mul<F: PrimeField>(a: u128, b: u128) -> u128 {
+    let mut product = F::from_u128_with_reduction(a);
+    product.mul_assign(&F::from_u128_with_reduction(b));
+    product.as_u128_reduced()
+}
+
+fn scalar_inverse<F: PrimeField>(a: u128) -> Option<u128> {
+    F::from_u128_with_reduction(a)
+        .inverse()
+        .map(|inverse| inverse.as_u128_reduced())
+}
+
+impl ElementModel {
+    pub(crate) fn scalar_add(self, a: u128, b: u128) -> u128 {
+        match self.field {
+            None => scalar_add::<Bf>(a, b),
+            Some(FieldTag::Proth120) => scalar_add::<Proth120>(a, b),
+        }
+    }
+
+    pub(crate) fn scalar_mul(self, a: u128, b: u128) -> u128 {
+        match self.field {
+            None => scalar_mul::<Bf>(a, b),
+            Some(FieldTag::Proth120) => scalar_mul::<Proth120>(a, b),
+        }
+    }
+
+    pub(crate) fn scalar_inverse(self, a: u128) -> Option<u128> {
+        match self.field {
+            None => scalar_inverse::<Bf>(a),
+            Some(FieldTag::Proth120) => scalar_inverse::<Proth120>(a),
+        }
+    }
+}
 
 // ── Stable identities ────────────────────────────────────────────────────────
 
@@ -47,12 +90,12 @@ impl CoefficientRecipeId {
     pub const RESERVED: u32 = 2;
 
     /// The field value of a reserved literal id, or `None` for a banked id.
-    pub fn literal(self) -> Option<Ext> {
+    pub fn literal<E: Field>(self) -> Option<E> {
         if self == Self::ONE {
-            return Some(Ext::ONE);
+            return Some(E::ONE);
         }
         if self == Self::NEG_ONE {
-            let mut v = Ext::ONE;
+            let mut v = E::ONE;
             v.negate();
             return Some(v);
         }
@@ -245,8 +288,8 @@ fn challenge_order_key(reference: &ChallengeRef) -> (u8, u8, u8, u32) {
 /// A canonical scalar times a sorted multiset of challenge factors.
 ///
 /// Invariants (upheld by [`NormalizedCoefficientRecipe`]'s constructors):
-///   * `scalar` is a CANONICAL REDUCED BabyBear value and never `0` — an
-///     annihilated product is dropped, not encoded;
+///   * `scalar` is a CANONICAL REDUCED value of the layer's field and never `0` —
+///     an annihilated product is dropped, not encoded;
 ///   * every challenge is in canonical spelling ([`CoeffChallenge::new`]);
 ///   * `challenges` is sorted ascending, with multiplicity PRESERVED; and
 ///   * a scalar `1` with no challenges is the multiplicative identity, which the
@@ -257,7 +300,7 @@ fn challenge_order_key(reference: &ChallengeRef) -> (u8, u8, u8, u32) {
 /// encoded power.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CoeffProduct {
-    pub scalar: u32,
+    pub scalar: u128,
     pub challenges: Vec<CoeffChallenge>,
     pub inits_and_teardowns_top_bits: Vec<gkr_eval_ir::InitsAndTeardownsTopBitsRef>,
 }
@@ -303,49 +346,65 @@ impl NormalizedCoefficientRecipe {
     /// The multiplicative identity, represented by
     /// [`CoefficientRecipeId::ONE`] once interned.
     pub fn one() -> Self {
-        Self::scalar(Bf::ONE)
+        NormalizedCoefficientRecipe {
+            terms: vec![CoeffProduct {
+                scalar: 1,
+                challenges: Vec::new(),
+                inits_and_teardowns_top_bits: Vec::new(),
+            }],
+        }
     }
 
     /// `-1`, represented by [`CoefficientRecipeId::NEG_ONE`] once interned.
-    pub fn neg_one() -> Self {
-        let mut v = Bf::ONE;
-        v.negate();
-        Self::scalar(v)
+    pub fn neg_one(model: ElementModel) -> Self {
+        Self::scalar(model, model.minus_one)
     }
 
-    /// A bare scalar (`0` collapses to [`zero`](Self::zero)).
-    pub fn scalar(v: Bf) -> Self {
-        Self::from_terms(vec![CoeffProduct {
-            scalar: v.as_u32_reduced(),
-            challenges: Vec::new(),
-            inits_and_teardowns_top_bits: Vec::new(),
-        }])
+    /// A bare canonical scalar (`0` collapses to [`zero`](Self::zero)).
+    pub fn scalar(model: ElementModel, value: u128) -> Self {
+        assert!(
+            value <= model.minus_one,
+            "coefficient scalar {value} is not canonical for {:?}",
+            model.field
+        );
+        Self::from_terms(
+            model,
+            vec![CoeffProduct {
+                scalar: value,
+                challenges: Vec::new(),
+                inits_and_teardowns_top_bits: Vec::new(),
+            }],
+        )
     }
 
     /// A bare challenge factor.
     pub fn challenge(r: ChallengeRef) -> Self {
-        Self::from_terms(vec![CoeffProduct {
-            scalar: 1,
-            challenges: vec![CoeffChallenge::new(r)],
-            inits_and_teardowns_top_bits: Vec::new(),
-        }])
+        NormalizedCoefficientRecipe {
+            terms: vec![CoeffProduct {
+                scalar: 1,
+                challenges: vec![CoeffChallenge::new(r)],
+                inits_and_teardowns_top_bits: Vec::new(),
+            }],
+        }
     }
 
     pub fn inits_and_teardowns_top_bits(
         reference: gkr_eval_ir::InitsAndTeardownsTopBitsRef,
     ) -> Self {
-        Self::from_terms(vec![CoeffProduct {
-            scalar: 1,
-            challenges: Vec::new(),
-            inits_and_teardowns_top_bits: vec![reference],
-        }])
+        NormalizedCoefficientRecipe {
+            terms: vec![CoeffProduct {
+                scalar: 1,
+                challenges: Vec::new(),
+                inits_and_teardowns_top_bits: vec![reference],
+            }],
+        }
     }
 
     /// Canonicalize `terms`: put each challenge in canonical spelling and sort a
     /// product's challenges, merge products that share a challenge multiset
     /// (summing their scalars), drop the ones whose scalar cancels to zero, and
     /// sort what remains.
-    pub fn from_terms(mut terms: Vec<CoeffProduct>) -> Self {
+    pub fn from_terms(model: ElementModel, mut terms: Vec<CoeffProduct>) -> Self {
         // Merge by challenge multiset. `BTreeMap` gives the canonical term order
         // for free.
         let mut merged: std::collections::BTreeMap<
@@ -353,7 +412,7 @@ impl NormalizedCoefficientRecipe {
                 Vec<CoeffChallenge>,
                 Vec<gkr_eval_ir::InitsAndTeardownsTopBitsRef>,
             ),
-            Bf,
+            u128,
         > = std::collections::BTreeMap::new();
         for t in terms.drain(..) {
             if t.scalar == 0 {
@@ -367,15 +426,15 @@ impl NormalizedCoefficientRecipe {
             challenges.sort();
             let mut top_bits = t.inits_and_teardowns_top_bits;
             top_bits.sort();
-            let slot = merged.entry((challenges, top_bits)).or_insert(Bf::ZERO);
-            slot.add_assign(&Bf::from_u32_with_reduction(t.scalar));
+            let slot = merged.entry((challenges, top_bits)).or_insert(0);
+            *slot = model.scalar_add(*slot, t.scalar);
         }
         let terms = merged
             .into_iter()
-            .filter(|(_, v)| v.as_u32_reduced() != 0)
+            .filter(|(_, v)| *v != 0)
             .map(
                 |((challenges, inits_and_teardowns_top_bits), v)| CoeffProduct {
-                    scalar: v.as_u32_reduced(),
+                    scalar: v,
                     challenges,
                     inits_and_teardowns_top_bits,
                 },
@@ -392,46 +451,45 @@ impl NormalizedCoefficientRecipe {
         *self == Self::one()
     }
 
-    pub fn is_neg_one(&self) -> bool {
-        *self == Self::neg_one()
+    pub fn is_neg_one(&self, model: ElementModel) -> bool {
+        *self == Self::neg_one(model)
     }
 
     /// The reserved literal id for `+1` / `-1`, or `None` when this recipe needs a
     /// bank entry (a zero recipe also returns `None` — it must never be encoded).
-    pub fn reserved_id(&self) -> Option<CoefficientRecipeId> {
+    pub fn reserved_id(&self, model: ElementModel) -> Option<CoefficientRecipeId> {
         if self.is_one() {
             return Some(CoefficientRecipeId::ONE);
         }
-        if self.is_neg_one() {
+        if self.is_neg_one(model) {
             return Some(CoefficientRecipeId::NEG_ONE);
         }
         None
     }
 
-    pub fn add(&self, other: &Self) -> Self {
+    pub fn add(&self, other: &Self, model: ElementModel) -> Self {
         let mut terms = self.terms.clone();
         terms.extend(other.terms.iter().cloned());
-        Self::from_terms(terms)
+        Self::from_terms(model, terms)
     }
 
-    pub fn mul(&self, other: &Self) -> Self {
+    pub fn mul(&self, other: &Self, model: ElementModel) -> Self {
         let mut terms = Vec::with_capacity(self.terms.len() * other.terms.len());
         for a in &self.terms {
             for b in &other.terms {
-                let mut scalar = Bf::from_u32_with_reduction(a.scalar);
-                scalar.mul_assign(&Bf::from_u32_with_reduction(b.scalar));
+                let scalar = model.scalar_mul(a.scalar, b.scalar);
                 let mut challenges = a.challenges.clone();
                 challenges.extend(b.challenges.iter().cloned());
                 let mut inits_and_teardowns_top_bits = a.inits_and_teardowns_top_bits.clone();
                 inits_and_teardowns_top_bits.extend(b.inits_and_teardowns_top_bits.iter().copied());
                 terms.push(CoeffProduct {
-                    scalar: scalar.as_u32_reduced(),
+                    scalar,
                     challenges,
                     inits_and_teardowns_top_bits,
                 });
             }
         }
-        Self::from_terms(terms)
+        Self::from_terms(model, terms)
     }
 }
 
@@ -527,6 +585,7 @@ impl CoeffTerm {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CoeffLayer {
     pub(crate) regime: crate::BwdRegime,
+    pub(crate) model: ElementModel,
     /// The per-thread `acc_c0` initializer, evaluated once per
     /// proof/program. `None` = initialize to zero and consume no coefficient slot.
     pub c_init: Option<CoefficientRecipeId>,
@@ -537,9 +596,9 @@ pub struct CoeffLayer {
     /// ALWAYS empty at R0. Every member's `CoeffTerm::coefficient` is rewritten
     /// to the group's `core` id.
     pub groups: Vec<CoeffGroup>,
-    /// Canonical BF values addressed by `ImmediateId::banked` ids. Deduplicated,
-    /// ascending. Capped by `limits::LEAN_MAX_IMMEDIATES`.
-    pub immediates: Vec<u32>,
+    /// Canonical base-field values addressed by `ImmediateId::banked` ids.
+    /// Deduplicated, ascending. Capped by `limits::LEAN_MAX_IMMEDIATES`.
+    pub immediates: Vec<u128>,
 }
 
 impl CoeffLayer {

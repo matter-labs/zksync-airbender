@@ -11,6 +11,6 @@ if (NOT DEFINED AB_CUDA_CMAKE_DIR)
 endif ()
 include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
 add_library(gpu_core_bench_native STATIC
-        bench/field.cu
+        baby_bear/bench/field.cu
 )
 ab_cuda_configure_target(gpu_core_bench_native PREFIX GPU_CORE INCLUDE_DIRS ${GPU_CORE_NATIVE_INCLUDE})

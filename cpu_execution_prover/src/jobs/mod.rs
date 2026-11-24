@@ -4,6 +4,9 @@ mod caps;
 mod inits_and_teardowns;
 mod proth120;
 
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) use proth120::evaluate_witness;
+
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::WhirOracleStorage;
 use execution_prover::messages::{
@@ -13,6 +16,10 @@ use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::trace::ChunkedTraceHolder;
 use std::borrow::Cow;
 use worker::Worker;
+
+/// CPU production expansion used by `gpu_trace`'s Proth120 parity tests.
+#[cfg(any(test, feature = "test-support"))]
+pub use proth120::expand_inits_and_teardowns;
 
 #[derive(Default)]
 pub(crate) struct CpuJobs {

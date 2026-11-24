@@ -7,6 +7,7 @@ use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::trace::UnrolledUnifiedTraceHost;
 use execution_prover_model::trace::{InitsAndTeardownsTraceHost, TracingDataHost};
 use fft::GoodAllocator;
+use std::alloc::Global;
 
 use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRExternalChallenges, GKRProof,
@@ -45,6 +46,7 @@ pub enum WorkerResult<A: GoodAllocator> {
     TracingData(TracingData<A>),
     SimulationResult(SimulationResult),
     SnapshotReplayed(usize),
+    PartialTreeAllocator { sequence_id: usize, allocator: A },
     BackendWorkResult(WorkResult<A>),
 }
 
@@ -57,6 +59,24 @@ pub struct MemoryCommitmentRequest<A: GoodAllocator, P> {
     pub tracing_data: Option<TracingDataHost<A>>,
 
     pub profile: ProofProfile,
+    pub partial_tree_allocator: Option<A>,
+}
+
+/// A commitment's partial Merkle trees, kept on the host so the proof of the
+/// same instance opens them instead of rebuilding them. The backend produces
+/// and interprets the nodes; the orchestrator moves them from the commitment
+/// to that instance's proof request.
+pub struct MemoryPartialTrees<A: GoodAllocator = Global> {
+    pub layout_version: u32,
+    pub circuit_type: CircuitType,
+    pub profile: ProofProfile,
+    pub log_domain_size: u32,
+    pub log_lde_factor: u32,
+    pub log_rows_per_leaf: u32,
+    pub log_tree_cap_size: u32,
+    pub reduction_layers: u32,
+    pub columns_count: usize,
+    pub nodes: Vec<[u32; 8], A>,
 }
 
 pub struct MemoryCommitmentResult<A: GoodAllocator> {
@@ -66,6 +86,7 @@ pub struct MemoryCommitmentResult<A: GoodAllocator> {
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
     pub tracing_data: Option<TracingDataHost<A>>,
     pub merkle_tree_caps: Vec<MerkleTreeCapVarLength>,
+    pub memory_partial_trees: Option<MemoryPartialTrees<A>>,
 }
 
 pub struct SetupInitializationRequest<P> {
@@ -93,6 +114,8 @@ pub struct ProofRequest<A: GoodAllocator, P> {
     /// per coset, in natural order). The GPU backend builds a
     /// `GpuGKRMemoryCapTransfer` from these caps.
     pub memory_caps: Vec<MerkleTreeCapVarLength>,
+    /// The partial trees this circuit's commitment persisted, if any.
+    pub memory_partial_trees: Option<MemoryPartialTrees<A>>,
 
     pub profile: ProofProfile,
 }
@@ -104,6 +127,7 @@ pub struct ProofResult<A: GoodAllocator> {
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
     pub tracing_data: Option<TracingDataHost<A>>,
     pub proof: GKRProof<BF, E4, DefaultTreeConstructor>,
+    pub memory_partial_trees: Option<Vec<[u32; 8], A>>,
 }
 
 pub struct L1WrapProofRequest<A: GoodAllocator, P> {

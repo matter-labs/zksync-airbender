@@ -22,7 +22,7 @@ log = "0.4"
 
 [features]
 # Builds the field micro-benchmark (`benches/field.rs`) + its CUDA archive
-# (`native/bench/field.cu` → `gpu_core_bench_native`).
+# (`native/baby_bear/bench/field.cu` → `gpu_core_bench_native`).
 bench = []
 
 [dev-dependencies]

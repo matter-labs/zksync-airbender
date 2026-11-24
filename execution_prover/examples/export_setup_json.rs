@@ -51,8 +51,11 @@ fn read_words(path: &str) -> io::Result<Vec<u32>> {
         ));
     }
     let mut words: Vec<u32> = bytes
-        .chunks_exact(4)
-        .map(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .copied()
+        .map(u32::from_le_bytes)
         .collect();
     setups::pad_bytecode_for_proving(&mut words);
     Ok(words)

@@ -18,7 +18,8 @@ crates below; `gpu_execution_prover` depends on it, never the reverse.
 
 ## GPU Scheduling Contract
 
-Before editing anything under `src/proof/orchestration/`, or any other code
+Before editing anything under `src/baby_bear/orchestration/` or
+`src/proth120/orchestration.rs`, or any other code
 that launches kernels, schedules host callbacks, or manages streams, you MUST
 read [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md)
 in full. It governs the async stream-ordered model used by GKR, WHIR, trace
@@ -70,34 +71,40 @@ summary — the contract document is the source of truth.
 - `build.rs`: no native archive — a thin wrapper over
   `gpu_native_build::emit_no_cuda_cfg()` only, since the CUDA moved to
   `gpu_trace`/`gpu_gkr`/`gpu_whir`.
-- `src/lib.rs`: crate root; declares `config`, `proof`, `upstream` (+
-  `#[cfg(test)]` `test_utils`/`tests`).
+- `src/lib.rs`: crate root; declares `baby_bear`, `config`, `proof`,
+  `proth120`, `upstream` (+ `#[cfg(test)]` `test_utils`).
 - `src/config.rs`: owns `GPU_SUPPORTED_SECURITY_LEVELS`. Circuit types resolve
   their canonical upstream `ProverConfig` directly.
-- `src/proof/`:
+- `src/proof/`: shared request/result traits, job completion, pipeline phase
+  order, memory policy types, and field preset dispatch.
+- `src/baby_bear/`:
   - `inputs.rs`: the consolidated H2D transfer bundle
     (`GpuGKRProofTransfer`) — one shared `Transfer` (from `gpu_prover_context`)
     for every pre-prove H2D piece.
   - `orchestration/`: `backward.rs`,
     `stage1_forward.rs`, `terminal.rs`, `whir.rs` — the phases of the
-    `prove()` pipeline. `proof::prove()` (in `proof/mod.rs`) is the sole
-    production entry point; it dispatches on `CircuitType` +
-    `GpuGKRProofTransfer` shape (no per-family whitelist) and returns a
-    `GpuGKRProofJob`.
+    BabyBear `prove()` pipeline. `proof::prove()` (in `proof/mod.rs`) accepts
+    a `BabyBearProofRequest` and returns a `GpuGKRProofJob`.
+  - `presets/`: BabyBear compression and generated memory policies.
+- `src/proth120/`: L1 wrap geometry, inputs, orchestration, result
+  implementation, and memory policy preset. `proof::prove()` accepts an
+  `L1WrapProofRequest` and returns a `GpuL1WrapProofJob`.
 - `src/upstream.rs`: single-file manifest re-exporting every item the crate
   consumes from `cs`, `prover`, and `field`. See "Upstream imports" below.
-- `src/test_utils.rs`, `src/tests/`: the e2e/parity test suite
+- `src/test_utils.rs`, `src/baby_bear/tests/`: the e2e/parity test suite
   (`#[cfg(test)]`), driving full proof workflows through this crate's
   `prove()` while reaching into `gpu_trace`/`gpu_gkr`/`gpu_whir`/
   `gpu_prover_context`/`gpu_ops` test-reference seams
   (`#[doc(hidden)] pub` items in those crates) across crate boundaries.
+- `src/tests/stagewise_replay.rs`: shared BabyBear/Proth120 transcript replay.
 - No `native/` tree, no `src/prover/`, no `src/witness/`; those live in
   `gpu_gkr`/`gpu_whir` and `gpu_trace`.
 
 ## Upstream imports
 
-Production code (`proof/**`, `config.rs`) imports from the upstream crates
-(`cs`, `prover`, `field`) **exclusively through `crate::upstream`**. Direct
+Production code (`proof/**`, `baby_bear/**`, `proth120/**`, `config.rs`) imports
+from the upstream crates (`cs`, `prover`, `field`) **exclusively through
+`crate::upstream`**. Direct
 `use cs::…;` / `use prover::…;` in non-test code is forbidden. `#[cfg(test)]`
 modules are exempt — the e2e test suite imports a much larger upstream
 surface (including `common_constants`) via `use crate::upstream::*` from a
@@ -111,11 +118,12 @@ clearly-marked `#[cfg(test)]` section of the same manifest file.
 
 ## Layer contract
 
-This crate's own module DAG is small: `config` and `proof::inputs` are leaves;
-`proof::orchestration` drives `gpu_trace`/`gpu_gkr`/`gpu_whir` directly.
+This crate's own module DAG is small: `config` and `baby_bear::inputs` are leaves;
+`baby_bear::orchestration` and `proth120::orchestration` drive
+`gpu_trace`/`gpu_gkr`/`gpu_whir` directly.
 `proof::prove()` is the proof entry point exposed upward to
 `gpu_execution_prover`; merged memory jobs use
-`gpu_gkr::stage1::merged_commitment::commit_merged_from_transfers`.
+`gpu_gkr::baby_bear::stage1::merged_commitment::commit_merged_from_transfers`.
 
 The crate stack itself — which modules became `gpu_core` / `gpu_ntt` /
 `gpu_ops` / `gpu_hash` / `gpu_prover_context` / `gpu_trace` /

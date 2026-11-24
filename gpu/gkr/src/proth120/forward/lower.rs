@@ -1,0 +1,63 @@
+//! Proth120 forward VM descriptor, filled from the field-generic lowering in `lower_common`.
+use super::desc::FwdVmDesc;
+use crate::forward::vm::lower_common;
+use crate::forward::vm::lower_common::FwdVmInputs;
+use crate::upstream::{Field, GKRAddress, PR};
+use gpu_gkr_compiler::CompiledLayer;
+pub(crate) use lower_common::ResolvedColumn;
+
+pub(crate) struct LoweredFwdVm {
+    pub desc: FwdVmDesc,
+    pub lookup_additive_slot: Option<usize>,
+    pub decoder_fill_slot: Option<usize>,
+}
+
+pub(crate) fn lower_desc(
+    layers: &[CompiledLayer],
+    header: &FwdVmInputs<'_, PR>,
+    resolve_column: &dyn Fn(GKRAddress) -> Option<ResolvedColumn>,
+) -> LoweredFwdVm {
+    let lowered = lower_common::lower_desc::<PR>(layers, header, resolve_column, &|_| PR::ZERO);
+    let d = lowered.desc;
+    let mut desc: FwdVmDesc = unsafe { std::mem::zeroed() };
+    desc.source_base = d.source_base;
+    desc.dst_base = d.dst_base;
+    desc.mapping_arena = d.mapping_arena;
+    desc.table = d.table;
+    desc.mask = d.mask;
+    desc.source_stride_bytes = d.source_stride_bytes;
+    desc.dst_stride_bytes = d.dst_stride_bytes;
+    desc.consts = d.consts;
+    desc.table_len = d.table_len;
+    desc.descs = d.descs;
+    desc.count = d.count;
+    desc.layer_count = d.layer_count;
+    desc.layers = d.layers;
+    desc.program = d.program;
+    desc.decoder_mapping = d.decoder_mapping;
+    LoweredFwdVm {
+        desc,
+        lookup_additive_slot: lowered.lookup_additive_slot,
+        decoder_fill_slot: lowered.decoder_fill_slot,
+    }
+}
+
+use crate::forward::vm::lower_common::LoweringField;
+
+impl LoweringField for PR {
+    type Ext = PR;
+    const NEEDS_SETUP_FILL: bool = false;
+    const SEPARATE_DECODER_MAPPING: bool = true;
+    fn canonical_constant(value: u128) -> Self {
+        assert!(
+            value < PR::CHARACTERISTICS_U128,
+            "forward constant is not canonical"
+        );
+        PR::from_u128_with_reduction(value)
+    }
+    fn inits_top_bits(raw: u32, shift: u32) -> Self {
+        PR::from_u128_with_reduction(u128::from(raw).checked_shl(shift).unwrap_or(0))
+    }
+}
+
+use crate::upstream::PrimeField;

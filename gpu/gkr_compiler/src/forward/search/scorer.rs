@@ -17,6 +17,7 @@ pub(super) struct LayerCtx<'a> {
     pub layer: &'a DagLayer,
     pub cross_layer_fields: &'a HashMap<ReadPlace, FieldKind>,
     pub budget: usize,
+    pub model: crate::ElementModel,
     pub units: Vec<RelationUnit>,
     pub sites: Vec<SiteKey>,
     pub floor: usize,
@@ -29,17 +30,20 @@ impl<'a> LayerCtx<'a> {
         cross_layer_fields: &'a HashMap<ReadPlace, FieldKind>,
         budget: usize,
     ) -> Self {
+        let model = crate::ElementModel::for_dag(dag);
         let layer = &dag.layers[layer_index];
         let compute_roots = crate::forward::context::build_compute_roots(layer);
-        let floor = super::floor::dag_traffic_floor(layer, cross_layer_fields, &compute_roots);
+        let floor =
+            super::floor::dag_traffic_floor(layer, cross_layer_fields, &compute_roots, model);
         let units = relation_units(layer);
         let order = atom_order(layer, &units);
         Self {
             layer,
             cross_layer_fields,
             budget,
+            model,
             units,
-            sites: enumerate_site_domain(layer, &order, &compute_roots)
+            sites: enumerate_site_domain(layer, &order, &compute_roots, model)
                 .into_iter()
                 .collect(),
             floor,
@@ -117,7 +121,13 @@ pub(super) fn genome_from_schedule(ls: &ForwardLayerArtifact, ctx: &LayerCtx) ->
 
 pub(super) fn score(genome: &Genome, ctx: &LayerCtx) -> CandidateScore {
     let schedule = decode_schedule(genome, ctx);
-    match compile_layer(ctx.layer, ctx.cross_layer_fields, &schedule, ctx.budget) {
+    match compile_layer(
+        ctx.layer,
+        ctx.cross_layer_fields,
+        &schedule,
+        ctx.budget,
+        ctx.model,
+    ) {
         Ok(compiled) => CandidateScore {
             infeasible: false,
             dram_traffic: compiled.stats.dram_traffic,

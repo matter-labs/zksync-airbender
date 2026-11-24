@@ -12,6 +12,7 @@ pub(super) fn dag_traffic_floor(
     layer: &DagLayer,
     cross: &HashMap<ReadPlace, FieldKind>,
     compute_roots: &std::collections::BTreeSet<RootId>,
+    model: crate::ElementModel,
 ) -> usize {
     floor_over_roots(
         layer,
@@ -25,6 +26,7 @@ pub(super) fn dag_traffic_floor(
                 lowered.then_some(r.expr.0)
             })
             .collect(),
+        model,
     )
 }
 
@@ -32,6 +34,7 @@ fn floor_over_roots(
     layer: &DagLayer,
     cross: &HashMap<ReadPlace, FieldKind>,
     roots: Vec<u32>,
+    model: crate::ElementModel,
 ) -> usize {
     use std::collections::HashSet;
     let mut seen_expr: HashSet<u32> = HashSet::new();
@@ -51,7 +54,7 @@ fn floor_over_roots(
                 if let SourceKind::Read { .. } = &layer.sources[sid.0 as usize] {
                     if distinct_reads.insert(sid.0 as usize) {
                         let f = expr_operand_field(layer, ExprId(eid), cross);
-                        total += f.lanes();
+                        total += f.lanes(model);
                     }
                 }
                 // Host values and virtual setup sources do not read DRAM.

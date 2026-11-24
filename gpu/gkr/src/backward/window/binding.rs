@@ -1,37 +1,35 @@
-//! Rust half of the window-3 executor's launch ABI, plus the runtime binder
-//! that turns a static [`WindowProgram`] into a launch-ready descriptor.
+//! Shared window-3 wire constants, row geometry, and source-lane binding helpers.
 //!
-//! The matching CUDA definitions and offset assertions live in
+//! The matching shared CUDA constants live in
 //! `native/gkr/backward/window/window_abi.cuh`.
 
-use core::mem::{align_of, offset_of, size_of};
-
-use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr_compiler::{
-    WindowProgram, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES, LEAN_MAX_IMMEDIATES,
-    MAX_SOURCE_WINDOWS, SOURCE_WINDOW_COLUMNS, WINDOW_SECTION_WORDS,
-};
-
-use super::tail::WINDOW_TAIL_TENSOR_CELLS;
 use crate::backward::window::bank::family_read_place;
 use crate::backward::window::common::{
-    BwdSourceWindow, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
-    BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE,
-    BWD_SOURCE_LANE_COLUMN_BITS,
+    BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
+    BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE,
 };
-use crate::backward::window::zeroed_box;
-use crate::backward::{make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_SIZE, GKR_EQ_HIGH_SLOTS};
-use crate::forward::vm::lower::read_place_to_gkr_address;
-use crate::forward::vm::production_bind::resolve_storage_column;
-use crate::upstream::{FieldKind, GKRAddress};
-use crate::GpuGKRStorage;
+use crate::forward::vm::lower_common::{read_place_to_gkr_address, ResolvedColumn};
+use crate::upstream::FieldKind;
+use core::mem::size_of;
+
+pub(crate) use gpu_gkr_compiler::window::WINDOW_PROGRAM_WORD_CAP as BWD_WINDOW_PROGRAM_WORD_CAP;
+use gpu_gkr_compiler::{
+    WindowProgram, LEAN_MAX_IMMEDIATES, MAX_SOURCE_WINDOWS, SOURCE_WINDOW_COLUMNS,
+    WINDOW_SECTION_WORDS,
+};
+
+use crate::backward::window::common::BwdSourceWindow;
+use crate::backward::window::common::BWD_SOURCE_LANE_COLUMN_BITS;
+use crate::backward::window::tail::WINDOW_TAIL_TENSOR_CELLS;
+use crate::backward::GKR_EQ_GROUP_SIZE;
+use crate::backward::GKR_EQ_HIGH_SLOTS;
+use crate::upstream::GKRAddress;
 
 pub(crate) const BWD_WINDOW_ADDR_SLOTS: usize = MAX_SOURCE_WINDOWS;
 pub(crate) const BWD_WINDOW_SECTION_WORDS: usize = WINDOW_SECTION_WORDS;
 pub(crate) const BWD_WINDOW_MAX_IMMEDIATES: usize = LEAN_MAX_IMMEDIATES;
 /// opcode, factor, source_a, source_b.
 pub(crate) const BWD_WINDOW_INSTRUCTION_WORDS: usize = 4;
-pub(crate) use gpu_gkr_compiler::window::WINDOW_PROGRAM_WORD_CAP as BWD_WINDOW_PROGRAM_WORD_CAP;
 
 /// Trace coordinates one window peels, so `2^3` trace rows per window row.
 pub(crate) const BWD_WINDOW_COORDINATES: usize = 3;
@@ -41,46 +39,6 @@ pub(crate) const BWD_WINDOW_ROWS_PER_TILE: usize = 32;
 /// the factored-eq layout carries.
 pub(crate) const BWD_WINDOW_MAX_FOLDING_STEPS: usize =
     BWD_WINDOW_COORDINATES + GKR_EQ_GROUP_SIZE * (GKR_EQ_HIGH_SLOTS + 1);
-
-/// The complete by-value launch descriptor of a generated window kernel. Source
-/// operands are source-window lanes (`slot:6 << 7 | column:7`) carried
-/// directly by the wire — the binder rewrites the lowered lanes to the ones
-/// storage implies, so the kernel needs no source-slot indirection table.
-#[repr(C, align(16))]
-#[derive(Clone, Copy)]
-pub(crate) struct WindowLaunchBinding {
-    pub slot: [BwdSourceWindow; BWD_WINDOW_ADDR_SLOTS],
-    pub eq_low: *const E4,
-    pub partials: *mut E4,
-    pub log_rows: u32,
-    pub eq_sizes: GkrEqSizes,
-    /// Cumulative instruction endpoints.
-    pub sections: [u32; BWD_WINDOW_SECTION_WORDS],
-    pub program: [u16; BWD_WINDOW_PROGRAM_WORD_CAP],
-    pub immediates: [u32; BWD_WINDOW_MAX_IMMEDIATES],
-}
-
-const _: () = {
-    assert!(BWD_WINDOW_ADDR_SLOTS == 64);
-    assert!(BWD_WINDOW_SECTION_WORDS == 4);
-    assert!(BWD_WINDOW_MAX_IMMEDIATES == 512);
-    assert!(BWD_WINDOW_PROGRAM_WORD_CAP.is_multiple_of(BWD_WINDOW_INSTRUCTION_WORDS));
-    assert!(
-        (BWD_WINDOW_PROGRAM_WORD_CAP * size_of::<u16>()).is_multiple_of(DESCRIPTOR_ALIGNMENT_BYTES)
-    );
-
-    assert!(size_of::<WindowLaunchBinding>() == 21_552);
-    assert!(align_of::<WindowLaunchBinding>() == DESCRIPTOR_ALIGNMENT_BYTES);
-    assert!(size_of::<WindowLaunchBinding>() + size_of::<u32>() <= KERNEL_ARGUMENT_CEILING_BYTES);
-    assert!(offset_of!(WindowLaunchBinding, slot) == 0);
-    assert!(offset_of!(WindowLaunchBinding, eq_low) == 1_024);
-    assert!(offset_of!(WindowLaunchBinding, partials) == 1_032);
-    assert!(offset_of!(WindowLaunchBinding, log_rows) == 1_040);
-    assert!(offset_of!(WindowLaunchBinding, eq_sizes) == 1_044);
-    assert!(offset_of!(WindowLaunchBinding, sections) == 1_056);
-    assert!(offset_of!(WindowLaunchBinding, program) == 1_072);
-    assert!(offset_of!(WindowLaunchBinding, immediates) == 19_504);
-};
 
 // ── Row geometry ─────────────────────────────────────────────────────────────
 
@@ -154,56 +112,7 @@ impl core::fmt::Display for WindowBindError {
 
 impl std::error::Error for WindowBindError {}
 
-/// The layer-scoped runtime addresses a window launch binds.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct WindowRuntimeScratch {
-    /// Production factored-eq low table; the high tables stay in `ab_gkr_eq_high`.
-    pub eq_low: *const E4,
-    /// The layer's shared partials buffer, sized by [`window_partials_len`].
-    pub partials: *mut E4,
-    pub partials_capacity: usize,
-}
-
-/// The window's runtime addressing: one slot per storage chunk actually read,
-/// and the lane each source slot resolved to.
-pub(super) struct WindowAddressing {
-    pub(super) slots: Vec<BwdSourceWindow>,
-    /// Indexed by source slot id; `None` for a source no window binds.
-    pub(super) lanes: Vec<Option<u16>>,
-}
-
-impl WindowAddressing {
-    fn intern(&mut self, slot: BwdSourceWindow) -> Result<usize, WindowBindError> {
-        if let Some(index) = self.slots.iter().position(|entry| {
-            entry.base == slot.base
-                && entry.log2_stride == slot.log2_stride
-                && entry.r0_stride_bytes == slot.r0_stride_bytes
-                && entry.origin == slot.origin
-                && entry.procedural_kind == slot.procedural_kind
-        }) {
-            return Ok(index);
-        }
-        if self.slots.len() == BWD_WINDOW_ADDR_SLOTS {
-            return Err(WindowBindError::Capacity {
-                resource: "window address slots",
-                required: BWD_WINDOW_ADDR_SLOTS + 1,
-                capacity: BWD_WINDOW_ADDR_SLOTS,
-            });
-        }
-        self.slots.push(slot);
-        Ok(self.slots.len() - 1)
-    }
-
-    fn bind(&mut self, source: u32, lane: u16) {
-        let source = source as usize;
-        if source >= self.lanes.len() {
-            self.lanes.resize(source + 1, None);
-        }
-        self.lanes[source] = Some(lane);
-    }
-}
-
-fn window_lane(slot: usize, column: usize) -> u16 {
+pub(crate) fn window_lane(slot: usize, column: usize) -> u16 {
     ((slot << BWD_SOURCE_LANE_COLUMN_BITS) | column) as u16
 }
 
@@ -212,13 +121,85 @@ fn window_lane(slot: usize, column: usize) -> u16 {
 /// bases at, and the column's index within that chunk. Same split as
 /// `production_bind::SlotTable::intern`, which is what makes two columns of one
 /// artifact window in different matrices simply two slots.
-pub(super) fn window_chunk_address(matrix: usize, pointer: usize, stride: usize) -> (usize, usize) {
+pub(crate) fn window_chunk_address(matrix: usize, pointer: usize, stride: usize) -> (usize, usize) {
     let rank = (pointer - matrix) / stride;
     let chunk = rank / SOURCE_WINDOW_COLUMNS;
     (
         matrix + chunk * SOURCE_WINDOW_COLUMNS * stride,
         rank % SOURCE_WINDOW_COLUMNS,
     )
+}
+
+pub(crate) fn intern_window_slot(
+    slots: &mut Vec<BwdSourceWindow>,
+    slot: BwdSourceWindow,
+    capacity: usize,
+) -> Option<usize> {
+    if let Some(index) = slots.iter().position(|entry| {
+        entry.base == slot.base
+            && entry.log2_stride == slot.log2_stride
+            && entry.r0_stride_bytes == slot.r0_stride_bytes
+            && entry.origin == slot.origin
+            && entry.procedural_kind == slot.procedural_kind
+    }) {
+        return Some(index);
+    }
+    if slots.len() == capacity {
+        return None;
+    }
+    slots.push(slot);
+    Some(slots.len() - 1)
+}
+
+pub(crate) fn bind_window_lane(lanes: &mut Vec<Option<u16>>, source: u32, lane: u16) {
+    let source = source as usize;
+    if source >= lanes.len() {
+        lanes.resize(source + 1, None);
+    }
+    lanes[source] = Some(lane);
+}
+
+pub(crate) fn rewrite_window_words(
+    program: &WindowProgram,
+    lanes: &[Option<u16>],
+    words: &mut [u16],
+) -> Result<(), (u32, u16)> {
+    words[..program.words.len()].copy_from_slice(&program.words);
+    for lane in &program.source_lanes {
+        let runtime = lanes
+            .get(lane.source as usize)
+            .copied()
+            .flatten()
+            .ok_or((lane.word, lane.source))?;
+        *words
+            .get_mut(lane.word as usize)
+            .ok_or((lane.word, lane.source))? = runtime;
+    }
+    Ok(())
+}
+
+/// The window's runtime addressing: one slot per storage chunk actually read,
+/// and the lane each source slot resolved to.
+pub(crate) struct WindowAddressing {
+    pub(crate) slots: Vec<BwdSourceWindow>,
+    /// Indexed by source slot id; `None` for a source no window binds.
+    pub(crate) lanes: Vec<Option<u16>>,
+}
+
+impl WindowAddressing {
+    fn intern(&mut self, slot: BwdSourceWindow) -> Result<usize, WindowBindError> {
+        intern_window_slot(&mut self.slots, slot, BWD_WINDOW_ADDR_SLOTS).ok_or(
+            WindowBindError::Capacity {
+                resource: "window address slots",
+                required: BWD_WINDOW_ADDR_SLOTS + 1,
+                capacity: BWD_WINDOW_ADDR_SLOTS,
+            },
+        )
+    }
+
+    fn bind(&mut self, source: u32, lane: u16) {
+        bind_window_lane(&mut self.lanes, source, lane);
+    }
 }
 
 /// Re-address every column the lowered windows reference, against production
@@ -230,9 +211,9 @@ pub(super) fn window_chunk_address(matrix: usize, pointer: usize, stride: usize)
 /// different matrices. So each column is interned into the slot its own pointer
 /// implies — chunk base plus rank within the chunk — and the binder rewrites
 /// the wire's lane words from the result.
-pub(super) fn intern_window_addressing<E: Copy>(
-    storage: &GpuGKRStorage<BF, E>,
+pub(crate) fn intern_window_addressing<B, E>(
     program: &WindowProgram,
+    resolve_column: impl Fn(GKRAddress) -> Option<ResolvedColumn>,
 ) -> Result<WindowAddressing, WindowBindError> {
     let mut addressing = WindowAddressing {
         slots: Vec::new(),
@@ -264,15 +245,15 @@ pub(super) fn intern_window_addressing<E: Copy>(
         }
         let expect_e4 = entry.backing_field() == FieldKind::Ext;
         let element = if expect_e4 {
-            size_of::<E4>()
+            size_of::<E>()
         } else {
-            size_of::<BF>()
+            size_of::<B>()
         } as u32;
         for column in &entry.columns {
             let place = family_read_place(entry.family, column.column)
                 .expect("an addressless window is procedural");
             let address = read_place_to_gkr_address(&place);
-            let resolved = resolve_storage_column(storage, address)
+            let resolved = resolve_column(address)
                 .ok_or(WindowBindError::UnresolvedWindow { window, address })?;
             if resolved.is_e4 != expect_e4 {
                 return Err(WindowBindError::WindowFieldMismatch { window, expect_e4 });
@@ -310,95 +291,4 @@ pub(super) fn intern_window_addressing<E: Copy>(
         }
     }
     Ok(addressing)
-}
-
-/// Assemble the descriptor from the static program, the resolved address slots,
-/// and the layer's runtime scratch.
-///
-/// The static program carries no trace shape, so `log_rows` and the eq schedule
-/// are computed here: a window consumes three coordinates per launch, leaving
-/// `folding_steps - 3` for its row axis.
-pub(super) fn build_window_binding(
-    program: &WindowProgram,
-    addressing: &WindowAddressing,
-    folding_steps: usize,
-    scratch: WindowRuntimeScratch,
-) -> Result<Box<WindowLaunchBinding>, WindowBindError> {
-    let slots = addressing.slots.as_slice();
-    if !(BWD_WINDOW_COORDINATES + 1..=BWD_WINDOW_MAX_FOLDING_STEPS).contains(&folding_steps) {
-        return Err(WindowBindError::UnsupportedFoldingSteps { folding_steps });
-    }
-    let capacities = [
-        ("window address slots", slots.len(), BWD_WINDOW_ADDR_SLOTS),
-        (
-            "window program words",
-            program.words.len(),
-            BWD_WINDOW_PROGRAM_WORD_CAP,
-        ),
-        (
-            "window immediates",
-            program.immediates.len(),
-            BWD_WINDOW_MAX_IMMEDIATES,
-        ),
-    ];
-    for (resource, required, capacity) in capacities {
-        if required > capacity {
-            return Err(WindowBindError::Capacity {
-                resource,
-                required,
-                capacity,
-            });
-        }
-    }
-    let required_partials = window_partials_len(1usize << folding_steps);
-    if required_partials > scratch.partials_capacity {
-        return Err(WindowBindError::Capacity {
-            resource: "window partials",
-            required: required_partials,
-            capacity: scratch.partials_capacity,
-        });
-    }
-
-    // SAFETY: every field of the descriptor is valid all-zero — the two pointers
-    // as null, the rest as zeroed integers.
-    let mut binding: Box<WindowLaunchBinding> = unsafe { zeroed_box() };
-    binding.slot[..slots.len()].copy_from_slice(slots);
-    binding.eq_low = scratch.eq_low;
-    binding.partials = scratch.partials;
-    binding.log_rows = window_log_rows(folding_steps);
-    binding.eq_sizes = make_eq_sizes(folding_steps - BWD_WINDOW_COORDINATES);
-    binding.sections = program.sections;
-    bind_window_words(program, addressing, &mut binding.program)?;
-    binding.immediates[..program.immediates.len()].copy_from_slice(&program.immediates);
-    Ok(binding)
-}
-
-pub(super) fn bind_window_words(
-    program: &WindowProgram,
-    addressing: &WindowAddressing,
-    words: &mut [u16],
-) -> Result<(), WindowBindError> {
-    words[..program.words.len()].copy_from_slice(&program.words);
-    // The wire's lowered lanes are the artifact's geometry; the side table names
-    // every word that carries one, so each is rewritten to the lane storage
-    // actually implies.
-    for lane in &program.source_lanes {
-        let word = lane.word as usize;
-        let runtime = addressing
-            .lanes
-            .get(usize::from(lane.source))
-            .copied()
-            .flatten()
-            .ok_or(WindowBindError::LaneSourceMissing {
-                word: lane.word,
-                source: lane.source,
-            })?;
-        *words
-            .get_mut(word)
-            .ok_or(WindowBindError::LaneSourceMissing {
-                word: lane.word,
-                source: lane.source,
-            })? = runtime;
-    }
-    Ok(())
 }

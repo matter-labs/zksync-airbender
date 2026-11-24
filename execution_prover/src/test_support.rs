@@ -3,8 +3,8 @@
 use crate::backend::{CircuitPrecomputation, ExecutionBackend};
 use crate::config::{BackendConfiguration, ExecutionProverConfiguration, SoundnessMode};
 use crate::messages::{
-    MemoryCommitmentResult, ProofResult, SetupInitializationResult, WorkBatch, WorkRequest,
-    WorkResult, WorkerResult,
+    MemoryCommitmentResult, MemoryPartialTrees, ProofResult, SetupInitializationResult, WorkBatch,
+    WorkRequest, WorkResult, WorkerResult,
 };
 use crate::setup::CanonicalCircuitSetup;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, BF};
@@ -12,7 +12,7 @@ use crate::ProofProfile;
 use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use worker::Worker;
@@ -20,6 +20,7 @@ use worker::Worker;
 const BLOCK_BYTES: usize = 64 << 20;
 const POOL_BLOCKS: usize = 64;
 static REQUESTS: AtomicUsize = AtomicUsize::new(0);
+
 #[derive(Clone)]
 pub(crate) struct TestPrecomputations(pub(crate) Option<Arc<GKRCircuitArtifact<BF>>>);
 
@@ -60,6 +61,13 @@ impl BackendConfiguration for TestConfiguration {
 pub(crate) struct TestBackend {
     batches: Mutex<Vec<JoinHandle<()>>>,
     active_batches: Arc<Mutex<std::collections::HashSet<u64>>>,
+    allocated_partial_trees: Arc<AtomicBool>,
+}
+
+impl TestBackend {
+    pub(crate) fn allocated_partial_trees(&self) -> bool {
+        self.allocated_partial_trees.load(Ordering::Relaxed)
+    }
 }
 
 impl Drop for TestBackend {
@@ -86,11 +94,16 @@ impl ExecutionBackend for TestBackend {
         Self {
             batches: Mutex::new(Vec::new()),
             active_batches: Default::default(),
+            allocated_partial_trees: Default::default(),
         }
     }
 
     fn allocate_trace_block(&self, bytes: usize) -> CpuTraceAllocator {
         CpuTraceAllocator::new(bytes)
+    }
+
+    fn persists_memory_partial_trees(&self, _profile: ProofProfile) -> bool {
+        true
     }
 
     fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
@@ -123,6 +136,7 @@ impl ExecutionBackend for TestBackend {
             "test batch is already active"
         );
         let active_batches = self.active_batches.clone();
+        let allocated_partial_trees = Arc::clone(&self.allocated_partial_trees);
         self.batches
             .lock()
             .unwrap()
@@ -162,6 +176,24 @@ impl ExecutionBackend for TestBackend {
                                     prover::definitions::SoundnessMode::PessimisticConjecture,
                                 ),
                             };
+                            let memory_partial_trees =
+                                request.partial_tree_allocator.map(|allocator| {
+                                    let mut nodes = Vec::with_capacity_in(1, allocator);
+                                    nodes.push([0; 8]);
+                                    allocated_partial_trees.store(true, Ordering::Relaxed);
+                                    MemoryPartialTrees {
+                                        layout_version: 0,
+                                        circuit_type: request.circuit_type,
+                                        profile: request.profile,
+                                        log_domain_size: 0,
+                                        log_lde_factor: 0,
+                                        log_rows_per_leaf: 0,
+                                        log_tree_cap_size: 0,
+                                        reduction_layers: 0,
+                                        columns_count: 0,
+                                        nodes,
+                                    }
+                                });
                             WorkResult::MemoryCommitment(MemoryCommitmentResult {
                                 batch_id: request.batch_id,
                                 circuit_type: request.circuit_type,
@@ -174,6 +206,7 @@ impl ExecutionBackend for TestBackend {
                                     };
                                     config.lde_factor()
                                 ],
+                                memory_partial_trees,
                             })
                         }
                         WorkRequest::Proof(request) => WorkResult::Proof(ProofResult {
@@ -182,6 +215,9 @@ impl ExecutionBackend for TestBackend {
                             sequence_id: request.sequence_id,
                             inits_and_teardowns: request.inits_and_teardowns,
                             tracing_data: request.tracing_data,
+                            memory_partial_trees: request
+                                .memory_partial_trees
+                                .map(|trees| trees.nodes),
                             proof: crate::upstream::GKRProof {
                                 external_challenges: request.external_challenges,
                                 final_explicit_evaluations: Default::default(),
