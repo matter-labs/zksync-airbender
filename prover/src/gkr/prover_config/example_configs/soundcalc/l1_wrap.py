@@ -1,13 +1,15 @@
 """Reproduce and certify the Ethproofs Proth120 L1 wrap schedule with soundcalc 2af5e7d.
 
-The packed width and hash size must match the asserts in prover_config_fixtures_are_current.
+For standalone runs, the packed width comes from committed_base_oracle_columns
+on the 2^22 Proth120 layout, as pinned in prover_config_fixtures_are_current.
+The challenge denominator comes from Keccak256Transcript::CHALLENGE_POINT_MASS.
+The Rust replay certifies with both values supplied directly by Rust.
 """
 import json
 from pathlib import Path
 
-from soundcalc.common.fields import FieldParams
-
 import whir_schedule_search as search
+from soundcalc.common.fields import FieldParams
 
 
 def certify(schedule, trace_log2, packed_columns, field_size):

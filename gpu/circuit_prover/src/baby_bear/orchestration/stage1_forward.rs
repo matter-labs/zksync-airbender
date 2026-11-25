@@ -8,8 +8,7 @@ use fft::GoodAllocator;
 
 use crate::baby_bear::inputs::EXTERNAL_CHALLENGES_E4_LEN;
 use crate::upstream::{
-    BaseCommitmentGeometry, BaseOracleRole, Blake2sTranscript, ProverConfig, Transcript,
-    WhirSchedule,
+    BaseCommitmentGeometry, BaseOracleRole, Blake2sTranscript, ProverConfig, WhirSchedule,
 };
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
@@ -259,10 +258,8 @@ pub(in crate::baby_bear) fn prepare_challenges_and_forward_setup<'a, A: GoodAllo
 
     let mut d_lookup_challenges: DeviceAllocation<E4> =
         context.alloc(2, AllocationPlacement::BestFit)?;
-    let lookup_pow_bits = prover_config.lookup_challenges_pow_bits(
-        compiled_circuit,
-        <Blake2sTranscript as Transcript<BF, E4>>::CHALLENGE_POINT_MASS,
-    );
+    let lookup_pow_bits =
+        prover_config.lookup_challenges_pow_bits::<_, _, Blake2sTranscript>(compiled_circuit);
     // SAFETY: the layout owns this live, disjoint u64 slot in the slab.
     let (lookup_nonce_ptr, _lookup_nonce_len) =
         unsafe { proof_layout.lookup_pow_nonce_device_mut(slab_base) };

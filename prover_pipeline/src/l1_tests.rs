@@ -33,7 +33,7 @@ fn ethproofs_l1_wrap_gkr_security_margins() {
         ((f64::from(m) + 0.5) * 2.0_f64.powf(config.base_lde_factor_log2() as f64 / 2.0)).log2();
     let sampler = Keccak256Transcript::CHALLENGE_POINT_MASS;
     let challenge_bits = f64::from(sampler.random_bits) - f64::from(sampler.max_preimages).log2();
-    let lookup_pow = config.lookup_challenges_pow_bits(&circuit, sampler);
+    let lookup_pow = config.lookup_challenges_pow_bits::<_, _, Keccak256Transcript>(&circuit);
     assert_eq!(lookup_pow, 14);
     let shared_pow = l1_wrap::EXTERNAL_CHALLENGES_POW_BITS.max(lookup_pow);
     assert_eq!(shared_pow, 20);

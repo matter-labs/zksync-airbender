@@ -23,7 +23,7 @@ Plain-text tail: the 2^1 polynomial.
 ## Why
 
 - base: unique decoding at rate 1/2 with 179 queries at 26 PoW bits; one bit of folding PoW brings the base fold to 100 bits
-- oracle 0: LDE 2^2 keeps the largest internal commitment at domain 2^25; m = 12 gives 0.94 bits/query within the folding PoW cap
+- oracle 0: LDE 2^2 keeps the first internal commitment at domain 2^25; m = 12 gives 0.94 bits/query within the folding PoW cap
 - oracle 1: m = 3 minimises the Johnson folding term; LDE 2^8 keeps the domain at 2^26 within the folding PoW cap
 - oracle 2: m = 3 minimises the Johnson folding term; LDE 2^10 keeps the domain at 2^23 within the folding PoW cap
 - oracle 3: m = 3 minimises the Johnson folding term; LDE 2^12 keeps the domain at 2^20 within the folding PoW cap

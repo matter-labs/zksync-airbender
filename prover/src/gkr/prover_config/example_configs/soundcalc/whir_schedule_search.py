@@ -13,7 +13,24 @@ import argparse
 from contextlib import redirect_stdout
 import json
 import math
+from pathlib import Path
+import subprocess
 import sys
+
+if not __debug__:
+    sys.exit("Soundcalc certification requires Python assertions. Run without -O or PYTHONOPTIMIZE.")
+
+import soundcalc
+
+soundcalc_root = Path(soundcalc.__file__).resolve().parent.parent
+soundcalc_revision = "2af5e7dfc01e4aef1bc0e544a3b75c1940b1dded"
+head = subprocess.run(
+    ["git", "-C", str(soundcalc_root), "rev-parse", "--show-toplevel", "HEAD"],
+    capture_output=True, text=True,
+)
+if head.returncode or head.stdout.splitlines() != [str(soundcalc_root), soundcalc_revision]:
+    sys.exit(f"Soundcalc certification requires the imported checkout at 2af5e7d (found at {soundcalc_root}).")
+
 from soundcalc.common.fields import BABYBEAR_4, FieldParams
 from soundcalc.pcs.whir import WHIR, WHIRConfig
 from soundcalc.proxgaps.proxgaps_regime import ProximityGapsRegime
@@ -23,7 +40,11 @@ from soundcalc.common.utils import get_bits_of_security_from_error as bits
 
 HASH_SIZE_BITS = 256
 TARGET = 100; LATER_POW = 27; FOLD_CAP = 24; MAX_DOM = 27
-F = FieldParams(BABYBEAR_4.name, BABYBEAR_4.p, 4, 2**128 / 81, BABYBEAR_4.two_adicity)
+
+def baby_bear_field(field_size):
+    return FieldParams(BABYBEAR_4.name, BABYBEAR_4.p, 4, field_size, BABYBEAR_4.two_adicity)
+
+F = baby_bear_field(2**128 / 81)
 
 class Mixed(ProximityGapsRegime):
     """per-iteration regime (WHIR Theorem 5.2 has per-iteration delta_i / ell_i); keyed by iteration rate"""

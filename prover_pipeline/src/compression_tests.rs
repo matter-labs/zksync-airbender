@@ -165,14 +165,15 @@ fn ethproofs_compression_gkr_security_margins() {
     assert_eq!(m, 3);
 
     assert_eq!(circuit.trace_len, 1 << config.trace_len_log2);
-    let pow = config.lookup_challenges_pow_bits(circuit, sampler);
+    let pow = config.lookup_challenges_pow_bits::<_, _, Blake2sTranscript>(circuit);
     assert_eq!(pow, 14);
     let lookup_bits = challenge_bits + f64::from(pow)
         - (pow_bits::lookup_identity_degree(circuit) as f64).log2()
         - loss;
     assert!(lookup_bits >= 100.0, "lookup: {lookup_bits:.9} bits");
     let pessimistic = CompressionProfile::Step.config(SoundnessMode::PessimisticConjecture);
-    let pessimistic_pow = pessimistic.lookup_challenges_pow_bits(circuit, sampler);
+    let pessimistic_pow =
+        pessimistic.lookup_challenges_pow_bits::<_, _, Blake2sTranscript>(circuit);
     assert_eq!(pessimistic_pow, 11);
     let pessimistic_lookup_bits = challenge_bits + f64::from(pessimistic_pow)
         - (pow_bits::lookup_identity_degree(circuit) as f64).log2();

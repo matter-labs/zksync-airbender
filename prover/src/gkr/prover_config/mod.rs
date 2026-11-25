@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::definitions::SecurityLevel;
-use transcript::ChallengePointMass;
+use field::{FieldExtension, PrimeField};
+use transcript::Transcript;
 
 pub mod commitment_geometry;
 pub mod example_configs;
@@ -359,10 +360,9 @@ pub struct ProverConfig {
 }
 
 impl ProverConfig {
-    pub fn lookup_challenges_pow_bits<F: field::PrimeField>(
+    pub fn lookup_challenges_pow_bits<F: PrimeField, E: FieldExtension<F>, TR: Transcript<F, E>>(
         &self,
         circuit: &cs::gkr_compiler::GKRCircuitArtifact<F>,
-        sampler: ChallengePointMass,
     ) -> u32 {
         assert!(
             !matches!(
@@ -376,7 +376,7 @@ impl ProverConfig {
             pow_bits::lookup_identity_degree(circuit),
             self.base_soundness,
             self.base_lde_factor_log2(),
-            sampler,
+            TR::CHALLENGE_POINT_MASS,
         )
     }
 

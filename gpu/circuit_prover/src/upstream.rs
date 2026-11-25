@@ -51,7 +51,7 @@ pub(crate) use prover::gkr::prover_config::BaseColumns;
 pub(crate) use prover::gkr::prover_config::{ProofProfile, ProverConfig};
 pub(crate) use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 pub(crate) use prover::merkle_trees::DefaultTreeConstructor;
-pub(crate) use prover::transcript::{Blake2sTranscript, Transcript};
+pub(crate) use prover::transcript::Blake2sTranscript;
 
 // -----------------------------------------------------------------------
 // Test-only upstream items — the e2e suite (tests/) imports these via

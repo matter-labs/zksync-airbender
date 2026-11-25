@@ -25,7 +25,6 @@ use prover::cs::gkr_compiler::{
     SpecialMemoryContributionRelation,
 };
 use prover::gkr::prover_config::pow_bits;
-use prover::transcript::Transcript;
 
 pub mod dim_reducing_layer;
 pub mod standard_layer;
@@ -2153,7 +2152,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             ),
         );
     let lookup_challenges_pow_bits = prover_config
-        .lookup_challenges_pow_bits(compiled_circuit, MW::Transcript::CHALLENGE_POINT_MASS);
+        .lookup_challenges_pow_bits::<_, MW::ChallengeField, MW::Transcript>(compiled_circuit);
     let whir_cap_size = whir_schedule.cap_size;
     let whir_cap_size_log2 = whir_cap_size.trailing_zeros() as usize;
 

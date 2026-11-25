@@ -11,7 +11,7 @@ use gpu_prover_context::ProverContext;
 
 use crate::upstream::{
     split_timestamp, GKRCircuitArtifact, GKRExternalChallenges, Keccak256Transcript, OperationMode,
-    ProverConfig, Transcript,
+    ProverConfig,
 };
 
 pub const BOUNDARY_PREFIX_U32_LEN: usize = 32 * 3 + 3;
@@ -60,7 +60,7 @@ pub fn lookup_pow_bits(
     external_challenges_pow_bits: u32,
 ) -> u32 {
     config
-        .lookup_challenges_pow_bits(circuit, Keccak256Transcript::CHALLENGE_POINT_MASS)
+        .lookup_challenges_pow_bits::<_, _, Keccak256Transcript>(circuit)
         .max(external_challenges_pow_bits)
 }
 

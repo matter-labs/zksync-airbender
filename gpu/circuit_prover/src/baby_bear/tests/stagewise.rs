@@ -1,5 +1,6 @@
 use super::*;
 use prover::gkr::prover::transcript_utils::draw_random_field_els_with_pow;
+use prover::transcript::Transcript;
 #[path = "../../tests/stagewise_replay.rs"]
 mod replay;
 
@@ -27,10 +28,10 @@ fn replay_expected_snapshots(
     let mut seed = <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&transcript_input);
     let worker = Worker::new();
     let compiled_circuit = fixture.base.gkr_programs.compiled_circuit();
-    let lookup_pow_bits = fixture.base.prover_config.lookup_challenges_pow_bits(
-        compiled_circuit,
-        <Blake2sTranscript as Transcript<BF, E4>>::CHALLENGE_POINT_MASS,
-    );
+    let lookup_pow_bits = fixture
+        .base
+        .prover_config
+        .lookup_challenges_pow_bits::<_, _, Blake2sTranscript>(compiled_circuit);
     let (lookup_nonce, _) = draw_random_field_els_with_pow::<BF, E4, Blake2sTranscript>(
         &mut seed,
         2,

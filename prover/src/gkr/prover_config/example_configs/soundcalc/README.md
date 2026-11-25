@@ -42,9 +42,9 @@ PYTHONPATH=/tmp/soundcalc python3 late_round_rebalance.py      # JBR-rebalanced 
   then the best rate). The default caps are `FOLD_CAP` for folding PoW per
   sumcheck step and `LATER_POW` for OOD and query PoW. Each shape supplies
   its base query PoW. The production shapes also fix the first internal LDE
-  factor to limit the size of the largest internal commitment. The query count is sized against the query
-  cap and the PoW is lowered to the smallest grind that still lifts the
-  round's query term to the target.
+  factor to limit the size of the first internal commitment. The query count is
+  sized against the query cap and the PoW is lowered to the smallest grind that
+  still lifts the round's query term to the target.
 * Virtual packing (`fold_log2 = 0`) is emulated as a message one bit larger
   with a round-0 fold of 1 (soundcalc needs `k_0 ≥ 1`): the re-committed
   oracle 0 is then exactly the batched polynomial. The certificate omits the

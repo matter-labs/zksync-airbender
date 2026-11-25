@@ -475,7 +475,7 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         base_analysis: BASE_UDR_2_24,
         rounds: &[
             round(2, 5, 79, 26, 10, jbr(12, 0.94, 110, &[23, 22, 21, 20, 19],
-                "LDE 2^2 keeps the largest internal commitment at domain 2^25; m = 12 gives 0.94 bits/query within the folding PoW cap")),
+                "LDE 2^2 keeps the first internal commitment at domain 2^25; m = 12 gives 0.94 bits/query within the folding PoW cap")),
             round(8, 5, 20, 25, 7, jbr(3, 3.78, 75, &[24, 23, 22, 21, 20],
                 "m = 3 minimises the Johnson folding term; LDE 2^8 keeps the domain at 2^26 within the folding PoW cap")),
             round(10, 5, 16, 24, 4, jbr(3, 4.78, 75, &[24, 23, 22, 21, 20],
@@ -776,8 +776,11 @@ mod tests {
     #[test]
     #[ignore = "requires soundcalc 2af5e7d on PYTHONPATH"]
     fn whir_schedules_meet_soundcalc_target() {
+        use crate::gkr::prover_config::pow_bits::committed_base_oracle_columns;
+        use field::Proth120;
         use serde_json::json;
         use std::process::{Command, Stdio};
+        use transcript::{ChallengePointMass, Keccak256Transcript};
 
         let baby_bear: Vec<_> = ENTRIES
             .iter()
@@ -805,9 +808,29 @@ mod tests {
                 })
             })
             .collect();
+        let wrap_layout: cs::gkr_compiler::GKRCircuitArtifact<Proth120> =
+            serde_json::from_str(include_str!(
+                "../../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_22/generated/layout.json"
+            ))
+            .expect("embedded 2^22 Proth120 unified layout");
+        let wrap = l1_wrap::ethproofs_packed_prover_config();
+        assert_eq!(wrap_layout.trace_len, 1 << wrap.trace_len_log2);
+        let sampler = |mass: ChallengePointMass| {
+            json!({
+                "random_bits": mass.random_bits,
+                "max_preimages": mass.max_preimages,
+            })
+        };
         let data = json!({
             "baby_bear": baby_bear,
-            "l1_wrap": l1_wrap::ethproofs_packed_prover_config(),
+            "baby_bear_sampler": sampler(
+                <Blake2sTranscript as Transcript<BabyBearField, BabyBearExt4>>::CHALLENGE_POINT_MASS,
+            ),
+            "l1_wrap": wrap,
+            "l1_wrap_sampler": sampler(Keccak256Transcript::CHALLENGE_POINT_MASS),
+            "l1_wrap_columns": committed_base_oracle_columns(
+                &wrap_layout, wrap.pack_log2(), wrap.merged_memory_and_witness(),
+            ),
         });
         let mut checker = Command::new("python3")
             .arg(concat!(
@@ -817,11 +840,12 @@ mod tests {
             .stdin(Stdio::piped())
             .spawn()
             .expect("start soundcalc schedule check");
-        serde_json::to_writer(checker.stdin.take().unwrap(), &data).unwrap();
+        let input_result = serde_json::to_writer(checker.stdin.take().unwrap(), &data);
         assert!(
             checker.wait().unwrap().success(),
             "soundcalc schedule check"
         );
+        input_result.unwrap();
     }
 
     #[test]
