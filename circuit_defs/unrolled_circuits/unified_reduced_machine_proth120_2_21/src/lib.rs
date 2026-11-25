@@ -186,43 +186,4 @@ mod test {
             "the committed shared L1 wrap witness function is stale"
         );
     }
-
-    const L1_WRAP22_LAYOUT: &str = "../unified_reduced_machine_proth120_2_22/generated/layout.json";
-
-    #[test]
-    fn generate_l1_wrap22() {
-        skip_if_ci!();
-
-        let layout =
-            compile(prover::gkr::prover_config::example_configs::l1_wrap::ETHPROOFS_TRACE_LEN_LOG2);
-        let dst = std::fs::File::create(L1_WRAP22_LAYOUT).unwrap();
-        serde_json::to_writer_pretty(dst, &layout).unwrap();
-    }
-
-    #[test]
-    fn l1_wrap22_is_current() {
-        use prover::gkr::prover_config::example_configs::l1_wrap::ETHPROOFS_TRACE_LEN_LOG2;
-
-        let layout = compile(ETHPROOFS_TRACE_LEN_LOG2);
-        let committed = std::fs::read_to_string(L1_WRAP22_LAYOUT).unwrap();
-        assert!(
-            serde_json::to_string_pretty(&layout).unwrap() == committed,
-            "the committed 2^22 L1 wrap layout is stale"
-        );
-        let mut wrap22: serde_json::Value = serde_json::from_str(&committed).unwrap();
-        let mut wrap21: serde_json::Value = serde_json::from_str(l1_wrap::LAYOUT_JSON).unwrap();
-        assert_eq!(
-            wrap22.as_object_mut().unwrap().remove("trace_len").unwrap(),
-            1 << ETHPROOFS_TRACE_LEN_LOG2
-        );
-        assert_eq!(
-            wrap21.as_object_mut().unwrap().remove("trace_len").unwrap(),
-            1 << l1_wrap::TRACE_LEN_LOG2
-        );
-        assert!(wrap21 == wrap22, "L1 wrap layouts differ beyond trace_len");
-        assert!(
-            witness(&layout) == include_str!("../generated/witness_generation_fn.rs"),
-            "2^22 L1 wrap witness generation differs from the shared witness function"
-        );
-    }
 }

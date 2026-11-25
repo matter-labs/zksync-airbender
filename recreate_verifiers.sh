@@ -48,6 +48,7 @@ unrolled_circuit_names=(
     "unified_reduced_machine"
     "unified_reduced_machine_2_22"
     "unified_reduced_machine_proth120_2_21"
+    "unified_reduced_machine_proth120_2_22"
 )
 
 for CIRCUIT_NAME in "${circuit_names[@]}"; do
@@ -68,7 +69,7 @@ done
 (RUST_MIN_STACK=100000000 cargo test -p unified_reduced_machine_proth120_2_21 --profile cli --lib \
     test::l1_wrap21_is_current -- --exact)
 
-(RUST_MIN_STACK=100000000 cargo test -p unified_reduced_machine_proth120_2_21 --profile cli --lib \
+(RUST_MIN_STACK=100000000 cargo test -p unified_reduced_machine_proth120_2_22 --profile cli --lib \
     test::l1_wrap22_is_current -- --exact)
 
 (cd circuit_defs/setups && RUST_MIN_STACK=100000000 cargo test --release generate_delegation_circuits_artifacts)

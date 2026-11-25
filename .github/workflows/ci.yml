@@ -65,7 +65,7 @@ jobs:
           RUST_MIN_STACK: 1073741824
         run: |
           cargo test -p unified_reduced_machine_proth120_2_21 --profile cli --lib test::l1_wrap21_is_current -- --exact
-          cargo test -p unified_reduced_machine_proth120_2_21 --profile cli --lib test::l1_wrap22_is_current -- --exact
+          cargo test -p unified_reduced_machine_proth120_2_22 --profile cli --lib test::l1_wrap22_is_current -- --exact
           cargo test -p gpu_witness_eval_generator --profile cli --lib tests::l1_wrap22_shares_committed_witness_cuh -- --exact
       - name: Native verifier tests
         env:
