@@ -1053,7 +1053,7 @@ fn prove_configured_with_gkr_impl<
         //    gated behind a proof-of-work; commit-before-draw is satisfied by
         //    `commit_initial` above.
         let lookup_challenges_pow_bits =
-            prover_config.lookup_challenges_pow_bits::<F, E>(compiled_circuit);
+            prover_config.lookup_challenges_pow_bits(compiled_circuit, TR::CHALLENGE_POINT_MASS);
         let (lookup_challenges_pow_nonce, [lookup_alpha, lookup_additive_part]) =
             match operation_mode {
                 OperationMode::MultipleChunks => {

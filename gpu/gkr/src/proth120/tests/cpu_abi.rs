@@ -19,9 +19,7 @@ pub(crate) fn programs() -> GkrProgramsPr {
 #[test]
 fn cpu_pr_lookup_pow_bits_follow_the_config() {
     use crate::proth120::packed_challenges::lookup_pow_bits;
-    use prover::gkr::prover_config::pow_bits::{
-        lookup_challenges_pow_bits, lookup_identity_degree,
-    };
+    use prover::transcript::{Keccak256Transcript, Transcript};
 
     let programs = programs();
     let circuit = &programs.runtime_circuit;
@@ -29,10 +27,9 @@ fn cpu_pr_lookup_pow_bits_follow_the_config() {
         21,
         prover::definitions::SoundnessMode::PessimisticConjecture,
     );
-    let derived = lookup_challenges_pow_bits::<PR, PR>(
-        config.security_level.security_bits(),
-        lookup_identity_degree(circuit),
-    );
+    let derived =
+        config.lookup_challenges_pow_bits(circuit, Keccak256Transcript::CHALLENGE_POINT_MASS);
+    assert_eq!(derived, 8);
     for external in [0, derived, derived + 1] {
         assert_eq!(
             lookup_pow_bits(circuit, &config, external),

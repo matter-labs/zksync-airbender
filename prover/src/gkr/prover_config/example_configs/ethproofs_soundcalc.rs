@@ -73,7 +73,7 @@ use super::super::pow_bits::batched_proximity_check_pow_bits;
 use super::*;
 
 /// The proximity-gap regime an oracle's terms are evaluated under.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ProximityRegime {
     /// `δ = (1 − ρ) / 2`, list size 1, correlated-agreement error
     /// `(γ·n + 1) / |F|` (BCIKS20 style): grind-free but at most one bit per
@@ -561,8 +561,6 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
     },
 ];
 
-pub(super) const COMPRESSION_LOOKUP_CHALLENGES_POW_BITS: u32 = 14;
-
 /// The `ProofProfile::Compression` schedule. Not in [`ENTRIES`]: it shares its
 /// lookup key with a standard entry.
 ///
@@ -575,7 +573,7 @@ pub(super) const COMPRESSION_LOOKUP_CHALLENGES_POW_BITS: u32 = 14;
 /// `k * log2(L)` to shared memory for `k` instances. The memory identity has
 /// degree at most `(4k + 2j) * 2^23 + 33` with `j` inline i/t instances.
 /// At `j = k = 3`, 19 memory PoW bits give 101.568 bits with the two-bit
-/// reserve. A 14-bit lookup floor gives 101.25 bits.
+/// reserve. The derived 14-bit lookup grind gives 101.25 bits.
 pub const COMPRESSION_2_23: EthproofsSoundcalcEntry = EthproofsSoundcalcEntry {
     shape: "2^23 committed polynomials, two values per column per leaf, base LDE 2^3, merged memory and witness (unified_reduced_machine compression)",
     level: SecurityLevel::Sec100,
@@ -722,7 +720,12 @@ mod tests {
     #[test]
     fn every_entry_validates_and_records_its_certification() {
         for entry in ENTRIES {
-            let config = standard_config(entry.message_size_log2, entry.level, entry.schedule(0));
+            let config = standard_config(
+                entry.message_size_log2,
+                entry.level,
+                BaseSoundness::Ethproofs(entry.base_analysis.regime),
+                entry.schedule(0),
+            );
             validate_entry(entry, &config);
             let input = input_for(entry, entry.max_committed_polys);
             let notes = entry.render_notes(entry.level, &input);

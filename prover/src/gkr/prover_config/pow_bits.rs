@@ -1,6 +1,9 @@
 use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::{FieldExtension, PrimeField};
+use transcript::ChallengePointMass;
+
+use super::{BaseSoundness, ProximityRegime};
 
 /// `floor(log2 |E|)` for the challenge field `E` of degree `E::DEGREE` over `F`.
 ///
@@ -23,7 +26,7 @@ pub const fn challenge_field_size_log2<F: PrimeField, E: FieldExtension<F>>() ->
 
 /// Total degree (in the lookup challenges α = `lookup_alpha`, γ = `lookup_additive`)
 /// of the cleared logUp identity, which bounds the lookup-argument soundness error
-/// by Schwartz–Zippel: `ε ≤ degree / |F|`.
+/// by Schwartz–Zippel: `ε ≤ degree · max_point_mass` per candidate base witness.
 ///
 /// The verifier draws α, γ and checks
 ///     `Σ_lookups 1/(RLC_α(tuple) + γ) = Σ_table mult · 1/(RLC_α(entry) + γ)`,
@@ -39,11 +42,17 @@ pub fn lookup_identity_degree<F: PrimeField>(compiled_circuit: &GKRCircuitArtifa
     // circuits (width 1, no α) still bound the γ-degree (= T).
     let tuple_width = compiled_circuit.generic_lookup_tables_width.max(1);
     // One logUp fraction per (lookup relation × row), across all lookup kinds.
-    let fractions_per_row = compiled_circuit.num_generic_lookups
-        + compiled_circuit.range_check_16_lookup_expressions.len()
-        + compiled_circuit
-            .timestamp_range_check_lookup_expressions
-            .len();
+    let fractions_per_row = compiled_circuit
+        .num_generic_lookups
+        .checked_add(compiled_circuit.range_check_16_lookup_expressions.len())
+        .and_then(|count| {
+            count.checked_add(
+                compiled_circuit
+                    .timestamp_range_check_lookup_expressions
+                    .len(),
+            )
+        })
+        .expect("lookup fraction count per row exceeds usize");
     let virtual_table_fractions = if compiled_circuit
         .range_check_16_lookup_expressions
         .is_empty()
@@ -59,40 +68,56 @@ pub fn lookup_identity_degree<F: PrimeField>(compiled_circuit: &GKRCircuitArtifa
     } else {
         1usize << TIMESTAMP_COLUMNS_NUM_BITS
     };
-    let total_fractions = fractions_per_row
-        .saturating_mul(compiled_circuit.trace_len)
-        .saturating_add(compiled_circuit.total_tables_size)
-        .saturating_add(virtual_table_fractions);
-    total_fractions.saturating_mul(tuple_width)
+    fractions_per_row
+        .checked_mul(compiled_circuit.trace_len)
+        .and_then(|count| count.checked_add(compiled_circuit.total_tables_size))
+        .and_then(|count| count.checked_add(virtual_table_fractions))
+        .and_then(|count| count.checked_mul(tuple_width))
+        .expect("lookup identity degree exceeds usize")
 }
 
-/// PoW bits required before the lookup challenges `lookup_alpha` (α) and
-/// `lookup_additive` (γ), so the cq/logUp lookup argument reaches `security_bits`.
-///
-/// By [`lookup_identity_degree`] the soundness error is `ε ≤ D / |F|`, so the
-/// no-PoW security is `log2|F| − ceil(log2 D)` and the PoW closes the gap to
-/// `security_bits`.
-pub const fn pow_bits_for_cq_lookup(
-    security_bits: usize,
-    identity_degree: usize,
-    field_size_log2: usize,
-) -> usize {
-    let degree_log2 = identity_degree.next_power_of_two().trailing_zeros() as usize;
-    let no_pow_security_bits = field_size_log2.saturating_sub(degree_log2);
-    security_bits.saturating_sub(no_pow_security_bits)
+fn ceil_log2(value: u128) -> u32 {
+    assert!(value > 0, "ceil_log2 requires a positive integer");
+    u128::BITS - (value - 1).leading_zeros()
 }
 
-/// PoW bits for the lookup challenges at the given security level, for a logUp
-/// identity of total degree `identity_degree` (see [`lookup_identity_degree`]).
-pub const fn lookup_challenges_pow_bits<F: PrimeField, E: FieldExtension<F>>(
-    security_bits: usize,
+/// PoW bits for LogUp at the requested security level, charging the rounded
+/// identity degree and the rounded product of the point mass and base list size.
+pub(super) fn lookup_challenges_pow_bits(
+    security_bits: u32,
     identity_degree: usize,
+    base: BaseSoundness,
+    base_lde_log2: usize,
+    sampler: ChallengePointMass,
 ) -> u32 {
-    pow_bits_for_cq_lookup(
-        security_bits,
-        identity_degree,
-        challenge_field_size_log2::<F, E>(),
-    ) as u32
+    if identity_degree == 0 {
+        return 0;
+    }
+    let preimages = u128::from(sampler.max_preimages);
+    let mut loss = ceil_log2(preimages);
+    if let BaseSoundness::Ethproofs(ProximityRegime::JohnsonBound { m }) = base {
+        assert!(m >= 3, "Johnson base multiplicity must be at least 3");
+        assert!(
+            (1..usize::BITS as usize).contains(&base_lde_log2),
+            "Johnson base LDE log2 must be positive and fit the base domain",
+        );
+        // (K·L)^2 = (K·(2m+1))^2 · 2^r / 4.
+        let scaled = preimages * (2 * u128::from(m) + 1);
+        let squared = scaled
+            .checked_mul(scaled)
+            .expect("lookup list charge exceeds u128");
+        loss = (ceil_log2(squared) + base_lde_log2 as u32).div_ceil(2) - 1;
+    }
+    let no_pow_bits = sampler
+        .random_bits
+        .saturating_sub(loss + ceil_log2(identity_degree as u128));
+    let pow_bits = security_bits.saturating_sub(no_pow_bits);
+    assert!(
+        pow_bits <= sampler.max_pow_bits,
+        "lookup PoW {pow_bits} exceeds the transcript limit of {} bits",
+        sampler.max_pow_bits,
+    );
+    pow_bits
 }
 
 /// Number of base-layer columns (memory + witness + committed setup): the
@@ -207,10 +232,11 @@ mod tests {
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
     use field::Proth120;
+    use transcript::{Blake2sTranscript, Keccak256Transcript, Transcript};
 
-    fn lookup_bits(security_bits: usize, identity_degree: usize) -> u32 {
-        lookup_challenges_pow_bits::<BabyBearField, BabyBearExt4>(security_bits, identity_degree)
-    }
+    const BABY_BEAR: ChallengePointMass =
+        <Blake2sTranscript as Transcript<BabyBearField, BabyBearExt4>>::CHALLENGE_POINT_MASS;
+    const PROTH120: ChallengePointMass = Keccak256Transcript::CHALLENGE_POINT_MASS;
 
     fn batched_bits(security_bits: usize, message_log2: usize, lde: usize, ell: usize) -> u32 {
         batched_proximity_check_pow_bits::<BabyBearField, BabyBearExt4>(
@@ -247,22 +273,55 @@ mod tests {
     }
 
     #[test]
-    fn lookup_pow_is_zero_at_80_bits() {
-        // no_pow = 123 - ceil(log2 D); for any realistic degree (D <= 2^43 ⇒
-        // no_pow >= 80) the lookup PoW is 0 at 80-bit security.
-        for degree_log2 in [20u32, 30, 40] {
-            assert_eq!(lookup_bits(80, 1usize << degree_log2), 0);
-        }
+    fn lookup_challenge_point_masses() {
+        assert_eq!((BABY_BEAR.random_bits, BABY_BEAR.max_preimages), (128, 81));
+        assert_eq!((PROTH120.random_bits, PROTH120.max_preimages), (128, 37));
     }
 
     #[test]
-    fn lookup_pow_at_100_scales_with_identity_degree() {
-        // no_pow = 123 - ceil(log2 D); pow = max(0, 100 - no_pow) = max(0, ceil(log2 D) - 23).
-        assert_eq!(lookup_bits(100, 1usize << 24), 1); // 24 - 23
-        assert_eq!(lookup_bits(100, 1usize << 30), 7); // 30 - 23
-        assert_eq!(lookup_bits(100, 1usize << 33), 10); // 33 - 23
-                                                        // ceil(log2) rounds a non-power-of-two up: D = 2^30 + 1 ⇒ 31 ⇒ pow 8.
-        assert_eq!(lookup_bits(100, (1usize << 30) + 1), 8);
+    fn lookup_degree_is_rounded_up() {
+        let pow = |target, degree| {
+            lookup_challenges_pow_bits(
+                target,
+                degree,
+                BaseSoundness::PessimisticConjecture,
+                1,
+                BABY_BEAR,
+            )
+        };
+        assert_eq!(pow(100, 1 << 30), 9);
+        assert_eq!(pow(100, (1 << 30) + 1), 10);
+        assert_eq!(pow(80, 1 << 30), 0);
+        assert_eq!(pow(150, 0), 0);
+    }
+
+    #[test]
+    fn lookup_pow_charges_the_johnson_base_list() {
+        let unique = BaseSoundness::Ethproofs(ProximityRegime::UniqueDecoding);
+        let johnson = BaseSoundness::Ethproofs(ProximityRegime::JohnsonBound { m: 3 });
+        let degree = 2_302_283_530;
+        assert_eq!(
+            lookup_challenges_pow_bits(100, degree, unique, 3, BABY_BEAR),
+            11
+        );
+        assert_eq!(
+            lookup_challenges_pow_bits(100, degree, johnson, 3, BABY_BEAR),
+            14
+        );
+        assert_eq!(
+            lookup_challenges_pow_bits(100, degree, johnson, 4, BABY_BEAR),
+            15
+        );
+        assert_eq!(
+            lookup_challenges_pow_bits(100, 1_235_357_450, johnson, 7, PROTH120),
+            14
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "exceeds the transcript limit")]
+    fn lookup_pow_rejects_difficulty_above_transcript_limit() {
+        lookup_challenges_pow_bits(154, 1, BaseSoundness::PessimisticConjecture, 1, BABY_BEAR);
     }
 
     #[test]

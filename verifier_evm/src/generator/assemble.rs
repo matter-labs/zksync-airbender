@@ -27,6 +27,7 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use prover::gkr::prover_config::{pow_bits, ProverConfig};
 use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTES as DIGEST_BYTES;
+use prover::transcript::{Keccak256Transcript, Transcript};
 use std::collections::BTreeSet;
 
 const GKR_TEMPLATE: &str = include_str!("../templates/gkr.sol");
@@ -393,10 +394,8 @@ fn render(
             prover_config.whir_message_size_log2(),
             pow_bits::committed_base_oracle_columns(circuit, pack_log2, true),
         );
-    let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
-        prover_config.security_level.security_bits(),
-        pow_bits::lookup_identity_degree(circuit),
-    );
+    let lookup_pow_bits = prover_config
+        .lookup_challenges_pow_bits(circuit, Keccak256Transcript::CHALLENGE_POINT_MASS);
     let external_pow_bits = lookup_pow_bits
         .max(prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS);
     for (gate, bits) in [

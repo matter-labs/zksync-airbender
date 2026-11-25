@@ -59,6 +59,7 @@ pub(crate) use prover::gkr::whir::{
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 #[cfg(test)]
 pub(crate) use prover::transcript::Seed;
+pub(crate) use prover::transcript::{Keccak256Transcript, Transcript};
 
 pub(crate) use field::proth120::Proth120 as PR;
 #[allow(unused_imports)]

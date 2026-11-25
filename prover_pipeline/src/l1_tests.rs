@@ -13,7 +13,10 @@ fn source() -> ProgramSource {
 fn ethproofs_l1_wrap_gkr_security_margins() {
     use ::prover::cs::{definitions::NUM_REGISTERS, gkr_compiler::GKRCircuitArtifact};
     use ::prover::field::Proth120;
-    use ::prover::gkr::prover_config::{example_configs::l1_wrap, pow_bits};
+    use ::prover::gkr::prover_config::{
+        example_configs::l1_wrap, pow_bits, BaseSoundness, ProximityRegime,
+    };
+    use ::prover::transcript::{Keccak256Transcript, Transcript};
 
     let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(include_str!(
         "../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_22/generated/layout.json"
@@ -21,20 +24,29 @@ fn ethproofs_l1_wrap_gkr_security_margins() {
     .expect("embedded 2^22 Proth120 unified layout");
     let config = l1_wrap::ethproofs_packed_prover_config();
     assert_eq!(circuit.trace_len, 1 << config.trace_len_log2);
-    let m = 3.0;
-    let loss = ((m + 0.5) * 2.0_f64.powf(config.base_round().lde_factor_log2 as f64 / 2.0)).log2();
-    let challenge_bits = 128.0 - 37.0_f64.log2();
-    let external_pow_bits = f64::from(l1_wrap::EXTERNAL_CHALLENGES_POW_BITS);
+    let BaseSoundness::Ethproofs(ProximityRegime::JohnsonBound { m }) = config.base_soundness
+    else {
+        panic!("Ethproofs L1 wrap uses a Johnson base");
+    };
+    assert_eq!(m, 3);
+    let loss =
+        ((f64::from(m) + 0.5) * 2.0_f64.powf(config.base_lde_factor_log2() as f64 / 2.0)).log2();
+    let sampler = Keccak256Transcript::CHALLENGE_POINT_MASS;
+    let challenge_bits = f64::from(sampler.random_bits) - f64::from(sampler.max_preimages).log2();
+    let lookup_pow = config.lookup_challenges_pow_bits(&circuit, sampler);
+    assert_eq!(lookup_pow, 14);
+    let shared_pow = l1_wrap::EXTERNAL_CHALLENGES_POW_BITS.max(lookup_pow);
+    assert_eq!(shared_pow, 20);
 
     let lookup_degree = pow_bits::lookup_identity_degree(&circuit);
-    let lookup_bits = challenge_bits + external_pow_bits - (lookup_degree as f64).log2() - loss;
+    let lookup_bits = challenge_bits + f64::from(shared_pow) - (lookup_degree as f64).log2() - loss;
     assert!(lookup_bits >= 100.0, "lookup: {lookup_bits:.9} bits");
 
     let keys_per_row =
         circuit.memory_layout.ram_access_sets.len() + 1 + circuit.memory_layout.teardown_sets.len();
     let memory_degree = circuit.trace_len * keys_per_row + NUM_REGISTERS + 1;
     let memory_bits =
-        challenge_bits + external_pow_bits - (memory_degree as f64).log2() - 2.0 - loss;
+        challenge_bits + f64::from(shared_pow) - (memory_degree as f64).log2() - 2.0 - loss;
     assert!(
         memory_bits >= 100.0,
         "single-instance memory: {memory_bits:.9} bits"

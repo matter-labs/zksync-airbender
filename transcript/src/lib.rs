@@ -17,6 +17,16 @@ pub use self::keccak256::*;
 #[cfg(feature = "pow")]
 pub mod pow;
 
+/// The maximum conditional point mass of one extension-field challenge is
+/// `max_preimages / 2^random_bits` in the random-word model.
+#[derive(Clone, Copy, Debug)]
+pub struct ChallengePointMass {
+    pub random_bits: u32,
+    pub max_preimages: u32,
+    /// Largest lookup PoW difficulty supported by the nonce gate.
+    pub max_pow_bits: u32,
+}
+
 /// Fiat-Shamir transcript abstraction.
 ///
 /// Implementors are effectively stateless and expose three families of
@@ -35,6 +45,8 @@ pub trait Transcript<F: Field, E: FieldExtension<F>>:
 {
     type Seed: 'static + Send + Sync + Clone + Copy + Default;
     type Hasher: 'static + Send + Sync + Clone + Copy;
+
+    const CHALLENGE_POINT_MASS: ChallengePointMass;
 
     // --- committing raw u32 words ---
     fn commit_initial_u32(input: &[u32]) -> Self::Seed;

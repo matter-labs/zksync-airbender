@@ -42,6 +42,7 @@ pub const PESSIMISTIC_COMPRESSION_POW_BITS: [u32; 5] = [25, 25, 25, 25, 17];
 /// while splitting the memory cap requires cap >= LDE.
 fn compression_config_for_schedule(
     trace_len_log2: usize,
+    base_soundness: BaseSoundness,
     whir_schedule: WhirSchedule,
 ) -> ProverConfig {
     assert_eq!(
@@ -59,7 +60,7 @@ fn compression_config_for_schedule(
         cap_size: whir_schedule.cap_size,
         sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
         security_level: SecurityLevel::Sec100,
-        lookup_challenges_pow_floor: None,
+        base_soundness,
         whir_schedule,
     }
 }
@@ -72,6 +73,7 @@ fn compression_config(
 ) -> ProverConfig {
     compression_config_for_schedule(
         trace_len_log2,
+        BaseSoundness::PessimisticConjecture,
         WhirSchedule::from_legacy_arrays(
             base_lde_factor,
             base_lde_factor,
@@ -122,13 +124,12 @@ pub fn pessimistic_compression_config_for_2_23() -> ProverConfig {
 
 /// Repeatable Compression profile under [`SoundnessMode::EthproofsSoundnessCalc`].
 pub fn ethproofs_compression_config_for_2_23() -> ProverConfig {
-    let mut config = compression_config_for_schedule(
+    let entry = &super::ethproofs_soundcalc::COMPRESSION_2_23;
+    compression_config_for_schedule(
         23,
-        super::ethproofs_soundcalc::COMPRESSION_2_23.schedule(0),
-    );
-    config.lookup_challenges_pow_floor =
-        Some(super::ethproofs_soundcalc::COMPRESSION_LOOKUP_CHALLENGES_POW_BITS);
-    config
+        BaseSoundness::Ethproofs(entry.base_analysis.regime),
+        entry.schedule(0),
+    )
 }
 
 /// L1 wrap over the 512 KiB wrap ROM.
@@ -212,7 +213,7 @@ pub mod l1_wrap {
             cap_size: CAP_SIZE,
             sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
             security_level: level,
-            lookup_challenges_pow_floor: None,
+            base_soundness: BaseSoundness::PessimisticConjecture,
             whir_schedule: WhirSchedule {
                 cap_size: CAP_SIZE,
                 base_round: crate::gkr::prover_config::WhirBaseRoundSchedule {
@@ -255,6 +256,7 @@ pub mod l1_wrap {
         use crate::gkr::prover_config::{WhirBaseRoundSchedule, WhirInternalRound};
 
         const CAP_SIZE: usize = 32;
+        const JOHNSON_MULTIPLICITY: u32 = 3;
         ProverConfig {
             trace_len_log2: ETHPROOFS_TRACE_LEN_LOG2,
             commitment_mode: CommitmentMode::MergedMemoryAndWitness,
@@ -263,7 +265,9 @@ pub mod l1_wrap {
             cap_size: CAP_SIZE,
             sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
             security_level: SecurityLevel::Sec100,
-            lookup_challenges_pow_floor: None,
+            base_soundness: BaseSoundness::Ethproofs(ProximityRegime::JohnsonBound {
+                m: JOHNSON_MULTIPLICITY,
+            }),
             whir_schedule: WhirSchedule {
                 cap_size: CAP_SIZE,
                 base_round: WhirBaseRoundSchedule {
