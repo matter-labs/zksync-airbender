@@ -185,7 +185,7 @@ both modes, plus the Pessimistic `compression_final` fixture. The inventory test
 binds the matrix to the mode-specific canonical registry.
 
 The GPU workflow's `chains` shard checks Standard, `compression` and `l1`
-chains in both modes. Its Ethproofs L1 byte comparison uses the 21 GiB preset.
+chains in both modes through the shared recipe.
 Before proving, it compares CPU and GPU trusted records byte for byte; GPU
 record construction logs the context's actual peak allocation per record.
 The shared cache includes compression records for both modes and no L1 wrap record.

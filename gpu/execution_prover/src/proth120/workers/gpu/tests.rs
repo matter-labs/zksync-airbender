@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::{GpuBackendConfiguration, MemoryPreset};
+use crate::config::GpuBackendConfiguration;
 use crate::upstream::{L1WrapSetup, OperationMode};
 use crate::workers::gpu::gpu_worker;
 use cpu_execution_prover::test_support::{with_l1_wrap_fixture, L1WrapFixture};
@@ -92,9 +92,9 @@ fn clone_setup(setup: &L1WrapSetup) -> L1WrapSetup {
 
 fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle, mode: SoundnessMode) {
     const WRAPS: u64 = 3;
-    let (circuit_type, memory_preset) = match mode {
-        SoundnessMode::PessimisticConjecture => (CircuitType::L1Wrap21, MemoryPreset::GiB30),
-        SoundnessMode::EthproofsSoundnessCalc => (CircuitType::L1Wrap22, MemoryPreset::GiB21),
+    let circuit_type = match mode {
+        SoundnessMode::PessimisticConjecture => CircuitType::L1Wrap21,
+        SoundnessMode::EthproofsSoundnessCalc => CircuitType::L1Wrap22,
     };
     assert_eq!(fixture.circuit_type, circuit_type);
     set_device(0).unwrap();
@@ -139,11 +139,7 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle, mode: Sound
     drop(requests_sender);
     let (initialized_sender, _initialized) = unbounded();
     let (results_sender, results) = unbounded();
-    let config = GpuBackendConfiguration {
-        memory_preset,
-        ..Default::default()
-    }
-    .context_config();
+    let config = GpuBackendConfiguration::default().context_config();
     gpu_worker(0, config, initialized_sender, requests, results_sender).unwrap();
     let mut proven = Vec::new();
     for result in results.try_iter().flatten() {
