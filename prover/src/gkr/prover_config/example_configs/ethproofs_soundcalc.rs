@@ -7,10 +7,8 @@
 //! is the search that produced every entry):
 //!
 //! * only its WHIR PCS module (`soundcalc/pcs/whir.py`: WHIR Theorem 5.2 with
-//!   the BCHKS25 proximity-gap bounds) — soundcalc has no model of our GKR
-//!   circuit layer, whose lookup / memory challenges sit at 105–118 bits by
-//!   our own field-size accounting;
-//! * BabyBear⁴ challenge field (`|F| ≈ 2^123.6`), 256-bit hashes, powers
+//!   the BCHKS25 proximity-gap bounds);
+//! * BabyBear⁴ challenges with maximum point mass `81/2^128`, 256-bit hashes, powers
 //!   batching of the committed polynomials, constraint degree 3 (soundcalc's
 //!   minimum; ours is 2, so ~0.6 bit conservative);
 //! * our explicit per-oracle LDE factors are written over soundcalc's
@@ -38,9 +36,8 @@
 //!   the cap); the folding and OOD grinds are computed the same way;
 //! * virtual packing (`fold_log2 = 0`) is emulated as a message one bit
 //!   larger with a round-0 fold of 1 (soundcalc needs `k_0 ≥ 1`); the
-//!   re-committed oracle 0 is then exactly our batched polynomial, the
-//!   emulated base fold term is 1 bit conservative, and the batching term is
-//!   recomputed on the real base code.
+//!   re-committed oracle 0 is then exactly our batched polynomial. The certificate
+//!   omits the artificial base fold and recomputes batching on the real base code.
 //!
 //! A base round at rate 1/2 uses unique decoding. Its query contribution is
 //! `−log2(1 − 1/4) ≈ 0.415` bits per query, so a base at `p` PoW bits needs
@@ -53,8 +50,8 @@
 //!
 //! Each [`EthproofsSoundcalcEntry`] is certified for a CEILING on the number
 //! of physically committed polynomials (it only enters the batching PoW:
-//! under a unique-decoding base round computed for the ceiling with the same
-//! formula as everywhere else, [`batched_proximity_check_pow_bits`]; under a
+//! under a unique-decoding base round computed for the ceiling with
+//! [`pow_bits_for_batched_proximity`] and the certified challenge entropy; under a
 //! Johnson-bound base round the grind the search certified at the ceiling); a
 //! circuit with more committed
 //! polynomials than the ceiling has no schedule and the lookup panics.
@@ -69,7 +66,9 @@
 
 use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 
-use super::super::pow_bits::batched_proximity_check_pow_bits;
+use transcript::{Blake2sTranscript, Transcript};
+
+use super::super::pow_bits::{ceil_log2, pow_bits_for_batched_proximity};
 use super::*;
 
 /// The proximity-gap regime an oracle's terms are evaluated under.
@@ -118,7 +117,7 @@ pub struct RoundAnalysis {
     /// rate (`−log2(1 − δ)`).
     pub bits_per_query: f64,
     /// Queries a unique-decoding analysis of the same oracle would need at
-    /// the same query PoW (for reference).
+    /// the shape's query PoW cap.
     pub unique_decoding_queries: usize,
     /// The folding-challenge PoW the analysis needs per sumcheck step of this
     /// oracle (decreasing by one bit per step); the schedule's single
@@ -203,17 +202,21 @@ impl EthproofsSoundcalcEntry {
 
     /// The batching PoW the entry was certified with: the grind the search
     /// certified for a Johnson-bound base round, otherwise the standard
-    /// [`batched_proximity_check_pow_bits`] at the committed-polynomial
+    /// [`pow_bits_for_batched_proximity`] at the committed-polynomial
     /// ceiling (which lands the batching term at 102 bits under unique
     /// decoding).
     pub fn batching_pow_bits(&self) -> u32 {
         self.base_batching_pow_bits.unwrap_or_else(|| {
-            batched_proximity_check_pow_bits::<BabyBearField, BabyBearExt4>(
+            let sampler =
+                <Blake2sTranscript as Transcript<BabyBearField, BabyBearExt4>>::CHALLENGE_POINT_MASS;
+            let entropy = sampler.random_bits - ceil_log2(u128::from(sampler.max_preimages));
+            pow_bits_for_batched_proximity(
                 self.level.security_bits(),
                 self.message_size_log2,
                 self.base_lde_factor_log2,
                 self.max_committed_polys,
-            )
+                entropy as usize,
+            ) as u32
         })
     }
 
@@ -257,7 +260,7 @@ impl EthproofsSoundcalcEntry {
         use std::fmt::Write;
         let mut out = String::new();
         let batching_pow_bits = self.batching_pow_bits();
-        let base_rate_log2 = DEFAULT_LDE_FACTOR.trailing_zeros() as usize;
+        let base_rate_log2 = self.base_lde_factor_log2;
         let _ = writeln!(
             out,
             "# WHIR schedule notes — `EthproofsSoundnessCalc`, `{}`, {}\n",
@@ -271,18 +274,16 @@ impl EthproofsSoundcalcEntry {
              every other term is at or above the target and several Johnson-bound terms sit exactly on \
              it, so any change of a domain, a fold or the committed-polynomial ceiling needs a re-run of \
              `prover/src/gkr/prover_config/example_configs/soundcalc/whir_schedule_search.py`. \
-             Model inputs: BabyBear⁴ challenge field (|F| ≈ 2^123.6), 256-bit hashes, powers batching, \
+             Model inputs: BabyBear⁴ challenges with effective denominator 2^128/81, 256-bit hashes, powers batching, \
              constraint degree 3 (soundcalc's minimum; ours is 2), our explicit per-oracle LDE factors, \
-             one OOD sample per oracle. The GKR circuit layer is outside the model (105–118 bits by our \
-             own field-size accounting).\n",
+             one OOD sample per internal oracle.\n",
             self.certified_bits, self.binding_term
         );
         let _ = writeln!(out, "## This circuit\n");
         let _ = writeln!(
             out,
             "- committed polynomials entering WHIR: **{}** (from the compiled circuit; physical packing \
-             2^{}{}), certified ceiling {} → batching PoW {} bits (computed for the ceiling with \
-             `pow_bits_for_batched_proximity`; batching term 102 bits under unique decoding)",
+             2^{}{}), certified ceiling {} → batching PoW {} bits",
             input
                 .num_committed_polys
                 .expect("notes are rendered for a compiled circuit"),
@@ -309,13 +310,14 @@ impl EthproofsSoundcalcEntry {
         );
         let _ = writeln!(
             out,
-            "| base | 2^{m} | 2^{r} | 2^{d} | {f} | {q} | {p} | 0 | – | {reg} | {bpq:.3} | {udr} |",
+            "| base | 2^{m} | 2^{r} | 2^{d} | {f} | {q} | {p} | {fp} | – | {reg} | {bpq:.3} | {udr} |",
             m = self.message_size_log2,
             r = base_rate_log2,
             d = self.message_size_log2 + base_rate_log2,
             f = self.fold_log2(),
             q = self.base_num_queries,
             p = self.base_queries_pow_bits,
+            fp = self.base_folding_pow_bits(),
             reg = self.base_analysis.regime.describe(base_rate_log2),
             bpq = self.base_analysis.bits_per_query,
             udr = self.base_analysis.unique_decoding_queries,
@@ -364,12 +366,8 @@ const BASE_UDR: RoundAnalysis = RoundAnalysis {
     bits_per_query: 0.415,
     unique_decoding_queries: 176,
     folding_pow_bits_per_step: &[],
-    reason: "unique decoding is the only regime certifiable at rate 1/2: the Johnson-bound batching \
-             term of the committed columns is 73–90 bits for any multiplicity and cannot be lifted \
-             within any sane batching PoW, and the Johnson radius at rate 1/2 (0.28–0.48 bits/query) \
-             is below the unique-decoding one (0.415) anyway; 176 queries at 27 PoW bits (no round of the \
-             2^20 test-shape schedules grinds more than 27) put the base query term at exactly 100 bits (no folding PoW needed: the unique-decoding fold term is \
-             above 100 by itself)",
+    reason: "unique decoding at rate 1/2 keeps powers batching within the PoW budget; \
+             176 queries at 27 PoW bits reach 100 bits for the base query term",
 };
 
 /// [`BASE_UDR`] under the production shapes' grind cap.
@@ -378,11 +376,15 @@ const BASE_UDR_26: RoundAnalysis = RoundAnalysis {
     bits_per_query: 0.415,
     unique_decoding_queries: 179,
     folding_pow_bits_per_step: &[],
-    reason: "unique decoding, the only regime certifiable at rate 1/2 (as for the 2^20 test shapes' \
-             27-bit base round); 179 queries at 26 PoW bits (no round of the Ethproofs production \
-             schedules grinds more than 26) put \
-             the base query term at 100 bits (no folding PoW needed: the unique-decoding fold term is \
-             above 100 by itself)",
+    reason: "unique decoding at rate 1/2 keeps powers batching within the PoW budget; \
+             179 queries at 26 PoW bits reach 100 bits for the base query term",
+};
+
+const BASE_UDR_2_24: RoundAnalysis = RoundAnalysis {
+    folding_pow_bits_per_step: &[1],
+    reason: "unique decoding at rate 1/2 with 179 queries at 26 PoW bits; \
+             one bit of folding PoW brings the base fold to 100 bits",
+    ..BASE_UDR_26
 };
 
 const fn jbr(
@@ -441,20 +443,20 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         cap_size: DEFAULT_CAP_SIZE,
         max_committed_polys: 128,
         certified_bits: 100,
-        binding_term: "OOD(i=1)",
+        binding_term: "fold(i=0,s=1)",
         base_num_queries: 179,
         base_queries_pow_bits: 26,
         base_batching_pow_bits: None,
         base_analysis: BASE_UDR_26,
         rounds: &[
-            round(3, 5, 52, 26, 8, jbr(12, 1.44, 88, &[23, 22, 21, 20, 19],
-                "LDE 2^3, two steps below the fewest-query 2^5 (domain 2^25): a cheaper commit of this largest oracle for more queries; at rate 2^-3 m = 12 gives 1.44 bits/query at a 23-bit folding grind — 52 queries at 26 bits where unique decoding would need 88; the OOD term needs 8 PoW bits with a single sample")),
-            round(9, 5, 18, 24, 5, jbr(3, 4.28, 74, &[24, 23, 22, 21, 20],
-                "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^9 keeps the domain at 2^26 where the fold grind is 24 bits; 4.28 bits/query")),
-            round(11, 5, 15, 21, 2, jbr(3, 5.28, 74, &[24, 23, 22, 21, 20],
-                "m = 3; LDE 2^11 so the 2^23 domain keeps the fold grind at 24 bits; 5.28 bits/query, 15 queries so that 21 bits of query PoW suffice")),
-            round(13, 4, 12, 25, 0, jbr(3, JOHNSON_R13_BITS_PER_QUERY, 74, &[24, 23, 22, 21],
-                "m = 3; LDE 2^13 (domain 2^20) so 24 bits of fold grind suffice; 6.28 bits/query, the OOD term needs no grind")),
+            round(3, 5, 53, 26, 9, jbr(8, 1.41, 90, &[22, 21, 20, 19, 18],
+                "LDE 2^3 keeps the largest internal commitment at domain 2^25; m = 8 gives 1.41 bits/query within the folding PoW cap")),
+            round(8, 5, 20, 25, 6, jbr(3, 3.78, 75, &[23, 22, 21, 20, 19],
+                "m = 3 minimises the Johnson folding term; LDE 2^8 keeps the domain at 2^25 within the folding PoW cap")),
+            round(10, 5, 16, 24, 3, jbr(3, 4.78, 75, &[23, 22, 21, 20, 19],
+                "m = 3 minimises the Johnson folding term; LDE 2^10 keeps the domain at 2^22 within the folding PoW cap")),
+            round(12, 4, 13, 25, 0, jbr(3, 5.78, 75, &[23, 22, 21, 20],
+                "m = 3 minimises the Johnson folding term; LDE 2^12 keeps the domain at 2^19 within the folding PoW cap")),
         ],
     },
     EthproofsSoundcalcEntry {
@@ -466,22 +468,22 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         cap_size: DEFAULT_CAP_SIZE,
         max_committed_polys: 128,
         certified_bits: 100,
-        binding_term: "OOD(i=1)",
+        binding_term: "fold(i=0,s=1)",
         base_num_queries: 179,
         base_queries_pow_bits: 26,
         base_batching_pow_bits: None,
-        base_analysis: BASE_UDR_26,
+        base_analysis: BASE_UDR_2_24,
         rounds: &[
-            round(2, 5, 79, 26, 8, jbr(12, 0.94, 108, &[22, 21, 20, 19, 18],
-                "LDE 2^2, two steps below the fewest-query 2^4 (domain 2^25): a cheaper commit of this largest oracle for more queries; at rate 2^-2 m = 12 gives 0.94 bits/query at a 22-bit folding grind — 79 queries at 26 bits where unique decoding would need 108; the OOD term needs 8 PoW bits")),
-            round(8, 5, 20, 25, 5, jbr(3, 3.78, 74, &[22, 21, 20, 19, 18],
-                "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^8 (domain 2^26) so the fold grind is 22 bits; 3.78 bits/query")),
-            round(10, 5, 16, 24, 2, jbr(3, 4.78, 74, &[22, 21, 20, 19, 18],
-                "m = 3; LDE 2^10 (domain 2^23), fold grind 22 bits; 4.78 bits/query")),
-            round(12, 4, 13, 25, 0, jbr(3, 5.78, 74, &[22, 21, 20, 19],
-                "m = 3; LDE 2^12 (domain 2^20), fold grind 22 bits; 5.78 bits/query, no OOD grind")),
-            round(14, 3, 11, 26, 0, jbr(3, 6.78, 74, &[23, 22, 21],
-                "m = 3; LDE 2^14 (domain 2^18), fold grind 23 bits; 6.78 bits/query, no OOD grind")),
+            round(2, 5, 79, 26, 10, jbr(12, 0.94, 110, &[23, 22, 21, 20, 19],
+                "LDE 2^2 keeps the largest internal commitment at domain 2^25; m = 12 gives 0.94 bits/query within the folding PoW cap")),
+            round(8, 5, 20, 25, 7, jbr(3, 3.78, 75, &[24, 23, 22, 21, 20],
+                "m = 3 minimises the Johnson folding term; LDE 2^8 keeps the domain at 2^26 within the folding PoW cap")),
+            round(10, 5, 16, 24, 4, jbr(3, 4.78, 75, &[24, 23, 22, 21, 20],
+                "m = 3 minimises the Johnson folding term; LDE 2^10 keeps the domain at 2^23 within the folding PoW cap")),
+            round(12, 4, 13, 25, 1, jbr(3, 5.78, 75, &[24, 23, 22, 21],
+                "m = 3 minimises the Johnson folding term; LDE 2^12 keeps the domain at 2^20 within the folding PoW cap")),
+            round(13, 3, 12, 25, 0, jbr(3, JOHNSON_R13_BITS_PER_QUERY, 75, &[23, 22, 21],
+                "m = 3 minimises the Johnson folding term; LDE 2^13 keeps the domain at 2^17 within the folding PoW cap")),
         ],
     },
     EthproofsSoundcalcEntry {
@@ -499,14 +501,14 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         base_batching_pow_bits: None,
         base_analysis: BASE_UDR_26,
         rounds: &[
-            round(3, 6, 52, 26, 8, jbr(12, 1.44, 88, &[23, 22, 21, 20, 19, 18],
-                "the re-committed batched polynomial at LDE 2^3, two steps below the fewest-query 2^5 (domain 2^25, folded by 6): a cheaper commit for more queries; m = 12 gives 1.44 bits/query at a 23-bit folding grind — 52 queries at 26 bits where unique decoding would need 88; its OOD term needs 8 PoW bits with a single sample")),
-            round(9, 5, 18, 24, 4, jbr(3, 4.28, 74, &[23, 22, 21, 20, 19],
-                "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^9 (domain 2^25), fold grind 23 bits; 4.28 bits/query")),
-            round(11, 5, 15, 21, 1, jbr(3, 5.28, 74, &[23, 22, 21, 20, 19],
-                "m = 3; LDE 2^11 (domain 2^22), fold grind 23 bits; 5.28 bits/query, 15 queries so that 21 bits of query PoW suffice")),
-            round(13, 5, 12, 25, 0, jbr(3, JOHNSON_R13_BITS_PER_QUERY, 74, &[23, 22, 21, 20, 19],
-                "m = 3; LDE 2^13 (domain 2^19), fold grind 23 bits; 6.28 bits/query, no OOD grind")),
+            round(3, 6, 53, 26, 9, jbr(8, 1.41, 90, &[22, 21, 20, 19, 18, 17],
+                "LDE 2^3 keeps the largest internal commitment at domain 2^25; m = 8 gives 1.41 bits/query within the folding PoW cap")),
+            round(8, 5, 20, 25, 5, jbr(3, 3.78, 75, &[22, 21, 20, 19, 18],
+                "m = 3 minimises the Johnson folding term; LDE 2^8 keeps the domain at 2^24 within the folding PoW cap")),
+            round(10, 5, 16, 24, 2, jbr(3, 4.78, 75, &[22, 21, 20, 19, 18],
+                "m = 3 minimises the Johnson folding term; LDE 2^10 keeps the domain at 2^21 within the folding PoW cap")),
+            round(12, 5, 13, 25, 0, jbr(3, 5.78, 75, &[22, 21, 20, 19, 18],
+                "m = 3 minimises the Johnson folding term; LDE 2^12 keeps the domain at 2^18 within the folding PoW cap")),
         ],
     },
     EthproofsSoundcalcEntry {
@@ -524,14 +526,14 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         base_batching_pow_bits: None,
         base_analysis: BASE_UDR,
         rounds: &[
-            round(8, 5, 20, 25, 6, jbr(3, 3.78, 74, &[23, 22, 21, 20, 19],
-                "LDE 2^8 (domain 2^27); m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term, fold grind 23 bits; 3.78 bits/query — 20 queries where unique decoding would need 74; the OOD term needs 6 PoW bits")),
-            round(10, 5, 16, 24, 3, jbr(3, 4.78, 74, &[23, 22, 21, 20, 19],
-                "m = 3; LDE 2^10 (domain 2^24), fold grind 23 bits; 4.78 bits/query")),
-            round(12, 4, 13, 25, 0, jbr(3, 5.78, 74, &[23, 22, 21, 20],
-                "m = 3; LDE 2^12 (domain 2^21), fold grind 23 bits; 5.78 bits/query, no OOD grind")),
-            round(14, 4, 11, 26, 0, jbr(3, 6.78, 74, &[24, 23, 22, 21],
-                "m = 3; LDE 2^14 (domain 2^19), fold grind 24 bits; 6.78 bits/query, no OOD grind")),
+            round(7, 5, 23, 25, 7, jbr(3, 3.28, 74, &[23, 22, 21, 20, 19],
+                "m = 3 minimises the Johnson folding term; LDE 2^7 keeps the domain at 2^26 within the folding PoW cap")),
+            round(9, 5, 18, 24, 4, jbr(3, 4.28, 74, &[23, 22, 21, 20, 19],
+                "m = 3 minimises the Johnson folding term; LDE 2^9 keeps the domain at 2^23 within the folding PoW cap")),
+            round(11, 4, 14, 27, 1, jbr(3, 5.28, 74, &[23, 22, 21, 20],
+                "m = 3 minimises the Johnson folding term; LDE 2^11 keeps the domain at 2^20 within the folding PoW cap")),
+            round(13, 4, 12, 25, 0, jbr(3, JOHNSON_R13_BITS_PER_QUERY, 74, &[24, 23, 22, 21],
+                "m = 3 minimises the Johnson folding term; LDE 2^13 keeps the domain at 2^18 within the folding PoW cap")),
         ],
     },
     EthproofsSoundcalcEntry {
@@ -549,14 +551,14 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
         base_batching_pow_bits: None,
         base_analysis: BASE_UDR,
         rounds: &[
-            round(7, 6, 22, 27, 7, jbr(4, 3.33, 74, &[24, 23, 22, 21, 20, 19],
-                "the re-committed batched polynomial at LDE 2^7 (the virtual twin's: domain 2^27, folded by 6); m = 4 keeps the fold grind of the 2^27 domain at the 24-bit cap for 3.33 bits/query — 22 queries where unique decoding would need 74; its OOD term needs 7 PoW bits")),
-            round(10, 5, 16, 24, 3, jbr(3, 4.78, 74, &[23, 22, 21, 20, 19],
-                "m = 3 (the theorem's floor) minimises the (m + 1/2)^5 fold term; LDE 2^10 (domain 2^24), fold grind 23 bits; 4.78 bits/query")),
-            round(12, 4, 13, 25, 0, jbr(3, 5.78, 74, &[23, 22, 21, 20],
-                "m = 3; LDE 2^12 (domain 2^21), fold grind 23 bits; 5.78 bits/query, no OOD grind")),
-            round(14, 4, 11, 26, 0, jbr(3, 6.78, 74, &[24, 23, 22, 21],
-                "m = 3; LDE 2^14 (domain 2^19), fold grind 24 bits; 6.78 bits/query, no OOD grind")),
+            round(7, 6, 23, 25, 8, jbr(3, 3.28, 74, &[24, 23, 22, 21, 20, 19],
+                "m = 3 minimises the Johnson folding term; LDE 2^7 keeps the domain at 2^27 within the folding PoW cap")),
+            round(9, 5, 18, 24, 4, jbr(3, 4.28, 74, &[23, 22, 21, 20, 19],
+                "m = 3 minimises the Johnson folding term; LDE 2^9 keeps the domain at 2^23 within the folding PoW cap")),
+            round(11, 4, 14, 27, 1, jbr(3, 5.28, 74, &[23, 22, 21, 20],
+                "m = 3 minimises the Johnson folding term; LDE 2^11 keeps the domain at 2^20 within the folding PoW cap")),
+            round(13, 4, 12, 25, 0, jbr(3, JOHNSON_R13_BITS_PER_QUERY, 74, &[24, 23, 22, 21],
+                "m = 3 minimises the Johnson folding term; LDE 2^13 keeps the domain at 2^18 within the folding PoW cap")),
         ],
     },
 ];
@@ -754,16 +756,72 @@ mod tests {
 
     #[test]
     fn batching_pow_is_the_formula_at_the_ceiling() {
-        // 123 - (message + 1) - ceil_log2(ceiling), lifted to 100
-        let expected = [(23, 128, 8), (24, 128, 9), (22, 512, 9), (20, 1024, 8)];
-        for (message, ceiling, bits) in expected {
-            for entry in ENTRIES
-                .iter()
-                .filter(|e| e.message_size_log2 == message && e.max_committed_polys == ceiling)
-            {
-                assert_eq!(entry.batching_pow_bits(), bits, "2^{message}");
-            }
+        let expected = [
+            (23, 1, 10),
+            (24, 1, 11),
+            (22, 0, 11),
+            (20, 1, 10),
+            (20, 0, 10),
+        ];
+        assert_eq!(ENTRIES.len(), expected.len());
+        for (entry, (message, fold, bits)) in ENTRIES.iter().zip(expected) {
+            assert_eq!(
+                (entry.message_size_log2, entry.fold_log2()),
+                (message, fold)
+            );
+            assert_eq!(entry.batching_pow_bits(), bits, "2^{message}");
         }
+    }
+
+    #[test]
+    #[ignore = "requires soundcalc 2af5e7d on PYTHONPATH"]
+    fn whir_schedules_meet_soundcalc_target() {
+        use serde_json::json;
+        use std::process::{Command, Stdio};
+
+        let baby_bear: Vec<_> = ENTRIES
+            .iter()
+            .map(|entry| (entry, entry.schedule(0)))
+            .chain([(
+                &COMPRESSION_2_23,
+                ethproofs_compression_config_for_2_23().whir_schedule,
+            )])
+            .map(|(entry, schedule)| {
+                let multiplicities: Vec<_> = std::iter::once(entry.base_analysis)
+                    .chain(entry.rounds.iter().map(|round| round.analysis))
+                    .map(|analysis| match analysis.regime {
+                        ProximityRegime::UniqueDecoding => None,
+                        ProximityRegime::JohnsonBound { m } => Some(m),
+                    })
+                    .collect();
+                json!({
+                    "shape": entry.shape,
+                    "message_log2": entry.message_size_log2,
+                    "columns": entry.max_committed_polys,
+                    "multiplicities": multiplicities,
+                    "binding_term": entry.binding_term,
+                    "certified_bits": entry.certified_bits,
+                    "schedule": schedule,
+                })
+            })
+            .collect();
+        let data = json!({
+            "baby_bear": baby_bear,
+            "l1_wrap": l1_wrap::ethproofs_packed_prover_config(),
+        });
+        let mut checker = Command::new("python3")
+            .arg(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/src/gkr/prover_config/example_configs/soundcalc/check_schedules.py"
+            ))
+            .stdin(Stdio::piped())
+            .spawn()
+            .expect("start soundcalc schedule check");
+        serde_json::to_writer(checker.stdin.take().unwrap(), &data).unwrap();
+        assert!(
+            checker.wait().unwrap().success(),
+            "soundcalc schedule check"
+        );
     }
 
     #[test]

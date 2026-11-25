@@ -76,7 +76,7 @@ pub fn lookup_identity_degree<F: PrimeField>(compiled_circuit: &GKRCircuitArtifa
         .expect("lookup identity degree exceeds usize")
 }
 
-fn ceil_log2(value: u128) -> u32 {
+pub(super) const fn ceil_log2(value: u128) -> u32 {
     assert!(value > 0, "ceil_log2 requires a positive integer");
     u128::BITS - (value - 1).leading_zeros()
 }

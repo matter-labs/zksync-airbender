@@ -10,6 +10,7 @@ Python ≥ 3.9 as `python3` (older versions fail on `list[int]` annotations).
 git clone https://github.com/ethereum/soundcalc /tmp/soundcalc && git -C /tmp/soundcalc checkout 2af5e7d
 cd prover/src/gkr/prover_config/example_configs/soundcalc
 PYTHONPATH=/tmp/soundcalc python3 whir_schedule_search.py      # the certified entries, one block per shape
+PYTHONPATH=/tmp/soundcalc python3 whir_schedule_search.py --json
 PYTHONPATH=/tmp/soundcalc python3 assess_current_configs.py    # the pessimistic ladders under UDR / JBR
 PYTHONPATH=/tmp/soundcalc python3 regime_sweep.py              # m / OOD-count sweep of the ladders
 PYTHONPATH=/tmp/soundcalc python3 late_round_rebalance.py      # JBR-rebalanced late rounds of the pessimistic ladders
@@ -21,7 +22,8 @@ PYTHONPATH=/tmp/soundcalc python3 late_round_rebalance.py      # JBR-rebalanced 
 
 * Only soundcalc's WHIR PCS module is used (`soundcalc/pcs/whir.py`: WHIR
   Theorem 5.2 with the BCHKS25 proximity-gap bounds); soundcalc has no model
-  of the GKR circuit layer. Inputs: BabyBear⁴ (`|F| ≈ 2^123.6`), 256-bit
+  of the GKR circuit layer. Inputs: BabyBear⁴ with effective challenge denominator
+  `2^128/81`, 256-bit
   hashes, powers batching of the committed polynomials, constraint degree 3
   (soundcalc's minimum; ours is 2), one OOD sample per oracle.
 * soundcalc assumes the domain halves every WHIR iteration; after building
@@ -39,37 +41,40 @@ PYTHONPATH=/tmp/soundcalc python3 late_round_rebalance.py      # JBR-rebalanced 
   grinding caps, and picks the fewest queries (then the least grinding,
   then the best rate). The default caps are `FOLD_CAP` for folding PoW per
   sumcheck step and `LATER_POW` for OOD and query PoW. Each shape supplies
-  its base query PoW; afterwards the query count is sized against the query
+  its base query PoW. The production shapes also fix the first internal LDE
+  factor to limit the size of the largest internal commitment. The query count is sized against the query
   cap and the PoW is lowered to the smallest grind that still lifts the
   round's query term to the target.
 * Virtual packing (`fold_log2 = 0`) is emulated as a message one bit larger
   with a round-0 fold of 1 (soundcalc needs `k_0 ≥ 1`): the re-committed
-  oracle 0 is then exactly the batched polynomial; the emulated base fold
-  term is 1 bit conservative and the batching term is recomputed on the real
-  base code.
+  oracle 0 is then exactly the batched polynomial. The certificate omits the
+  artificial base fold and recomputes batching on the real base code.
 * The committed-polynomial ceiling of a shape only sets the batching PoW
   for unique decoding (`pow_bits_for_batched_proximity` at the ceiling).
   A Johnson-bound base round takes the smallest batching grind that lifts
   its regime's batching term to the target.
 * The compression shape searches both base regimes at its own base rate
   and grinding caps, reusing the unified circuit and its merged commitment.
-  Each Ext4 challenge reduces four transcript words into BabyBear, with
-  at most three preimages per coordinate. The search uses the resulting
-  maximum point mass `81/2^128` for batching, folding, and OOD, by
-  constructing the field and proximity regimes with denominator `2^128/81`.
   The Compression schedule reaches 100 bits for every WHIR PCS term at
   the 128-column ceiling. Batching binds at 100 bits.
 
-The standard production shapes in `ethproofs_soundcalc.rs` are tuned for proving time
-(a lower grind cap, a cheaper oracle-0 commit for more queries) and were certified with the
-same pinned WHIR module. The Compression and test-circuit shapes use the search's schedules.
+Each Ext4 challenge reduces four transcript words into BabyBear, with at most
+three preimages per coordinate. The search uses the resulting maximum point mass
+`81/2^128` for the batching, folding and OOD terms in every BabyBear schedule.
 
 `whir_schedule_search.py` prints each shape as `WhirSchedule` fields with the
 per-step folding PoW list (our `folding_pow_bits` is one value per oracle: the
 maximum), the regime and `m` per oracle, bits per query, and the query count a
-unique-decoding analysis would need. Copy a new block into
-`ethproofs_soundcalc.rs` as an `EthproofsSoundcalcEntry` together with the
-reasons for the regime choices.
+unique-decoding analysis would need at the shape's query PoW cap. Its JSON
+output provides the numeric inputs for each `EthproofsSoundcalcEntry`.
+
+From the repository root, replay the Rust schedules at their certified column
+ceilings. The check applies the emitted folding PoW to every real fold step.
+
+```bash
+PYTHONPATH=/tmp/soundcalc cargo test -p prover --features test --lib \
+    whir_schedules_meet_soundcalc_target -- --ignored --nocapture
+```
 
 ## Proth120 L1 wrap (`l1_wrap.py`)
 
