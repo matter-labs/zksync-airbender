@@ -89,7 +89,7 @@ fn generated_sources(mode: SoundnessMode) -> Vec<(String, String)> {
     let (expected_setup_len, expected_setup_hash) = match mode {
         SoundnessMode::PessimisticConjecture => (
             29_210,
-            "7024dc38fe6be11ae2b04cf75f6210dfdaeced21bde20b3e5836c01737528b85",
+            "eba1f358ebbaf2322d3ec3cfc9f33e6aaf4bf15953bf52f6370a3ae774fed773",
         ),
         SoundnessMode::EthproofsSoundnessCalc => (
             29_978,
