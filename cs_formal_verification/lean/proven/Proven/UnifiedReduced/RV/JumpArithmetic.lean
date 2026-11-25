@@ -2,16 +2,20 @@ module
 public import Proven.UnifiedReduced.RV.ControlQueries
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 theorem control_intermediate_bounds [Fact p.Prime]
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup)) :
     (Word.mk (w 74).val (w 75).val).Bounded ∧ (w 64).val < limbBase := by
   have low := Verification.lookup_of_holds holds ⟨0, by rw [lookup_count]; decide⟩
   op_index at low
@@ -26,7 +30,7 @@ theorem control_intermediate_bounds [Fact p.Prime]
 
 theorem jump_link [Fact p.Prime] (hp : 196608 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (selected : w 21 + w 22 = 1) (other : w 23 = 0 ∧ w 24 = 0)
     (initial : (Word.mk (w 0).val (w 1).val).Bounded) :
     (Word.mk (w 50).val (w 51).val).toBitVec =
@@ -73,7 +77,7 @@ theorem jump_link [Fact p.Prime] (hp : 196608 < p)
 
 theorem jump_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p} {base offset final : Word} (indirect : Bool)
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 21 = (if indirect then 0 else 1) ∧ w 22 = (if indirect then 1 else 0))
     (other : w 23 = 0 ∧ w 24 = 0)
     (binary : w 26 = 0 ∧ w 27 = 0) (rom : w 81 = 0)
@@ -190,4 +194,6 @@ theorem jump_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     omega
 
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances control_intermediate_bounds, jump_link, jump_pc
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

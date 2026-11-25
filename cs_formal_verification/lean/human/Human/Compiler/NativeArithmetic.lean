@@ -1,7 +1,6 @@
 module
 public import Human.Import.Schema
-public import Human.Helpers.Core.Field
-public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.Core.CircuitField
 
 @[expose] public section
 
@@ -10,7 +9,7 @@ namespace Airbender.Compiler.NativeArithmetic
 abbrev F := ZMod babyBearModulus
 
 /-- Decode a serialized BabyBear Montgomery coefficient. -/
-def coefficient (value : Coefficient) : F := (value.raw.val : F) * montgomeryInverse
+def coefficient (value : Coefficient) : F := CircuitField.decode babyBearModulus value.raw.val
 
 /-- Evaluate the native sparse affine relation at physical addresses. -/
 def linear (relation : LinearRelation) (values : GKRAddress → F) : F :=

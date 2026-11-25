@@ -88,7 +88,7 @@ theorem rv_image_sources {p : Nat} {initial : RV.State} {cells : List Cell} {tok
 
 /-- RV sibling of `terminal_sail_reads`: a state matching the complete history reads the terminal values. -/
 theorem rv_terminal_reads {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial after : RV.State} {cells : List Cell}
     (image : initialImageRV initial cells = some trace.initialMemory) (domain : cells.Nodup)
@@ -112,7 +112,7 @@ theorem rv_terminal_reads {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 <
 /-- The whole RV composition: an accepted trace whose initial memory is the public RV image, whose native writes
     keep x0 zero, and whose rows each take one `RV.step`, realizes `RV.run`. -/
 theorem rv_realizes {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : RV.State} {cells : List Cell}
     (image : initialImageRV initial cells = some trace.initialMemory) (domain : cells.Nodup)

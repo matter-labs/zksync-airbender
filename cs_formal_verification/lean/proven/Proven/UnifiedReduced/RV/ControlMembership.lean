@@ -7,16 +7,20 @@ public import Mathlib.Tactic.IntervalCases
 public import Proven.CleanCore.Circuit.Operations
 public import Proven.CleanCore.Circuit.Lookup
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Verification
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 theorem control_constraints [Fact p.Prime] (hp : 4194304 ≤ p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (jumps : w 21 = 0 ∧ w 22 = 0) (selected : w 23 + w 24 = 1)
     (discarded : w 24 * (1 - w 25) = 0)
     (binary : w 26 = 0 ∧ w 27 = 0) (rom : w 81 = 0)
@@ -92,4 +96,6 @@ theorem control_constraints [Fact p.Prime] (hp : 4194304 ≤ p)
     · simpa [Lookup.Contains, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Expression.eval,
         Verification.environment] using cleanup
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances control_constraints
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

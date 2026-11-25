@@ -11,13 +11,17 @@ public import Human.Helpers.Core.BabyBearPrime
 namespace Airbender.Trace
 open Arithmetic
 
-/-- An accepted trace is a run of our RV32 spec (`RV.step`). The run consumes `consumed` input words.
-    Its final PC and tracked registers and RAM, including shadow RAM, equal the trace terminal values. -/
-def RVRealizes {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime] (trace : Data p Kind)
-    (initial : RV.State) (cells : List Cell) (consumed : Nat := 0) : Prop :=
-  ∃ n after, RV.run n initial = some after ∧ after.input = initial.input.drop consumed ∧
+/-- Observable agreement between an RV execution and the terminal tokens of a trace over its host field. -/
+def RealizesRun {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime] (trace : Data p Kind)
+    (initial : RV.State) (cells : List Cell) (consumed : Nat) (result : Option RV.State) : Prop :=
+  ∃ after, result = some after ∧ after.input = initial.input.drop consumed ∧
     after.pc = trace.terminal.word.toBitVec ∧
     ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
       cell.readRV after = some sink.word.toBitVec
+
+/-- An accepted trace reaches its terminal values after finitely many RV steps. -/
+def RVRealizes {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime] (trace : Data p Kind)
+    (initial : RV.State) (cells : List Cell) (consumed : Nat := 0) : Prop :=
+  ∃ n, RealizesRun trace initial cells consumed (RV.run n initial)
 
 end Airbender.Trace

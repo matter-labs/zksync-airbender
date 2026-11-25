@@ -10,12 +10,13 @@ variable {Kind : Type} [CircuitLayout Kind]
 
 /-- Kernel-checked local obligations reused by the native matching proofs.
     Instances prove these from each family's imported constraints and metadata. -/
-class ClockLaws (Kind : Type) [CircuitLayout Kind] (p : Nat) [Fact p.Prime] : Prop where
+class ClockLawsFor (Kind : Type) [CircuitLayout Kind] (p : Nat) [Fact p.Prime]
+    (coefficient : outParam (ZMod p)) : Prop where
   finalBound : ∀ (rom : CircuitLayout.Setup (Kind := Kind) p) (row : Row p Kind),
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom) → (decodeTimestamp row.assignment row.columns.finalTime).Bounded
   advance : ∀ (_ : 2 * timestampBase + 4 < p)
-    (_ : (-3840 : ZMod p) * 524288 = 1) (rom : CircuitLayout.Setup (Kind := Kind) p)
+    (_ : coefficient * 524288 = 1) (rom : CircuitLayout.Setup (Kind := Kind) p)
     (row : Row p Kind),
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom) → (decodeTimestamp row.assignment row.columns.initialTime).Bounded →
@@ -24,35 +25,48 @@ class ClockLaws (Kind : Type) [CircuitLayout Kind] (p : Nat) [Fact p.Prime] : Pr
   portsClocks : ∀ row : Row p Kind, row.ports.map MemoryPort.clock = row.columns.ports
   offsets : ∀ row : Row p Kind, row.ports.toList.map (fun port => port.clock.offset) = [0, 1, 2]
   effects : ∀ (_ : 2 * timestampBase + 4 < p)
-    (_ : (-3840 : ZMod p) * 524288 = 1) (rom : CircuitLayout.Setup (Kind := Kind) p)
+    (_ : coefficient * 524288 = 1) (rom : CircuitLayout.Setup (Kind := Kind) p)
     (row : Row p Kind),
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom) → ClockInputs row.columns row.assignment →
     ClockEffects row.columns row.assignment
 
-private theorem row_final_bound [Fact p.Prime] [ClockLaws Kind p]
+/-- The original BabyBear clock coefficient, kept for the existing circuit instances. -/
+abbrev ClockLaws (Kind : Type) [CircuitLayout Kind] (p : Nat) [Fact p.Prime] :=
+  ClockLawsFor Kind p (-3840)
+
+namespace ClockLaws
+variable {p : Nat} [Fact p.Prime] [ClockLaws Kind p]
+abbrev finalBound := @ClockLawsFor.finalBound Kind _ p _ (-3840) _
+abbrev advance := @ClockLawsFor.advance Kind _ p _ (-3840) _
+abbrev portsClocks := @ClockLawsFor.portsClocks Kind _ p _ (-3840) _
+abbrev offsets := @ClockLawsFor.offsets Kind _ p _ (-3840) _
+abbrev effects := @ClockLawsFor.effects Kind _ p _ (-3840) _
+end ClockLaws
+
+private theorem row_final_bound [Fact p.Prime] {coefficient : ZMod p} [ClockLawsFor Kind p coefficient]
     (rom : CircuitLayout.Setup (Kind := Kind) p) (row : Row p Kind)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom)) : (decodeTimestamp row.assignment row.columns.finalTime).Bounded :=
-  ClockLaws.finalBound rom row h
+  ClockLawsFor.finalBound rom row h
 
 private theorem row_advance [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1)
     (rom : CircuitLayout.Setup (Kind := Kind) p) (row : Row p Kind)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom)) (bound : (decodeTimestamp row.assignment row.columns.initialTime).Bounded) :
     (decodeTimestamp row.assignment row.columns.finalTime).value =
       (decodeTimestamp row.assignment row.columns.initialTime).value + 4 :=
-  ClockLaws.advance hp inverse rom row h bound
+  ClockLawsFor.advance hp inverse rom row h bound
 
-theorem ports_clocks [Fact p.Prime] [ClockLaws Kind p] (row : Row p Kind) :
-    row.ports.map MemoryPort.clock = row.columns.ports := ClockLaws.portsClocks row
+theorem ports_clocks [Fact p.Prime] {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (row : Row p Kind) :
+    row.ports.map MemoryPort.clock = row.columns.ports := ClockLawsFor.portsClocks row
 
-theorem port_offset [Fact p.Prime] [ClockLaws Kind p] (row : Row p Kind)
+theorem port_offset [Fact p.Prime] {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (row : Row p Kind)
     (port : MemoryPort) (member : port ∈ row.ports) : port.clock.offset < 4 := by
   have present : port.clock.offset ∈ row.ports.toList.map (fun port => port.clock.offset) :=
     List.mem_map.mpr ⟨port, by simpa using member, rfl⟩
-  rw [ClockLaws.offsets row] at present
+  rw [ClockLawsFor.offsets row] at present
   simp only [List.mem_cons, List.not_mem_nil, or_false] at present
   rcases present with present | present | present <;> omega
 
@@ -100,7 +114,7 @@ private theorem clock_matching [Fact p.Prime] {trace : Data p Kind} (accepted : 
 /-- Discharge the row-level clock interface from actual native tuple matching.
     Public initial clock conditions replace every per-row bound/alignment premise. -/
 theorem clock_inputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∀ row ∈ trace.rows, ClockInputs row.columns row.assignment := by
   have matching := clock_matching accepted
@@ -146,12 +160,12 @@ theorem clock_inputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact writeBounds writer writerMember token tokenMember
 
 theorem trace_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∀ row ∈ trace.rows, ClockEffects row.columns row.assignment := by
   intro row member
   have inputs := clock_inputs hp inverse accepted boundary row member
   have h := accepted.constraints row member
-  exact ClockLaws.effects hp inverse trace.rom row h inputs
+  exact ClockLawsFor.effects hp inverse trace.rom row h inputs
 
 end Airbender.Trace.Proofs

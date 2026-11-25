@@ -2,9 +2,13 @@ module
 public import Human.Circuits.UnifiedReduced.Tables.Setup
 public import Proven.Lookups
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs
+namespace Airbender.UnifiedReduced.Standard.Proofs
+variable {profile : Profile}
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1000000
@@ -47,4 +51,6 @@ theorem conditional_sign_key {right left borrow equal tag : Nat}
     original.2.2.2.1, original.2.2.2.2, canonical.1, canonical.2.1,
     canonical.2.2.1, canonical.2.2.2.1, canonical.2.2.2.2, sign]
 
-end Airbender.UnifiedReduced.Proofs
+babybear_instances conditional_sign_key
+
+end Airbender.UnifiedReduced.Standard.Proofs

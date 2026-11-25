@@ -11,9 +11,13 @@ public import Proven.Defs.Circuits.UnifiedReduced.Artifact
 public import Proven.CleanCore.Circuit.Operations
 public import Proven.Defs.Helpers.Core.Word
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs
+namespace Airbender.UnifiedReduced.Standard.Proofs
+variable {profile : Profile}
 open Airbender.Arithmetic
 
 set_option maxRecDepth 8192
@@ -21,7 +25,7 @@ set_option maxRecDepth 8192
 /-- Execute, all family flags, shared scratch controls and dispatch/PC controls. -/
 theorem local_flags {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup)) :
     ∀ i : Fin 30,
       w (#v[4, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
         26, 27, 28, 29, 52, 53, 54, 55, 56, 81, 122, 123, 124, 125][i]) = 0 ∨
@@ -45,7 +49,7 @@ open scoped BigOperators
     Family-2 rd-is-zero marker is excluded because it may accompany that operation. -/
 theorem dispatch_count {p : Nat} [Fact p.Prime] (hp : 18 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (active : w 4 = 1) :
     (∑ i : Fin 18, (w Variables.dispatchColumns[i]).val) ≤ 1 := by
   have definition := Verification.assertion_of_holds h ⟨87, by rw [constraint_count]; decide⟩
@@ -63,7 +67,7 @@ theorem dispatch_count {p : Nat} [Fact p.Prime] (hp : 18 < p)
 /-- A selected operation excludes every other dispatch bit on an active row. -/
 theorem dispatch_exclusive {p : Nat} [Fact p.Prime] (hp : 18 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (active : w 4 = 1) (selected : Fin 18)
     (set : w Variables.dispatchColumns[selected] = 1) :
     ∀ i : Fin 18, i ≠ selected → w Variables.dispatchColumns[i] = 0 := by
@@ -82,7 +86,7 @@ theorem dispatch_exclusive {p : Nat} [Fact p.Prime] (hp : 18 < p)
 /-- Destination limbs are ranged independently of the selected family. -/
 theorem destination_bounds {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup)) :
     (w 50).val < limbBase ∧ (w 51).val < limbBase := by
   have low := Verification.lookup_of_holds h ⟨2, by rw [lookup_count]; decide⟩
   have high := Verification.lookup_of_holds h ⟨3, by rw [lookup_count]; decide⟩
@@ -93,7 +97,7 @@ theorem destination_bounds {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fie
 /-- The initial high-PC limb is already ranged by the shared state interface. -/
 theorem initial_pc_hi_bound {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup)) :
     (w 1).val < limbBase := by
   have bound := Verification.lookup_of_holds h ⟨4, by rw [lookup_count]; decide⟩
   op_index at bound
@@ -102,7 +106,7 @@ theorem initial_pc_hi_bound {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fi
 /-- Both final PC limbs are locally ranged, including Family-2 rows. -/
 theorem pc_bounds {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup)) :
     (w 30).val < limbBase ∧ (w 31).val < limbBase := by
   have low := Verification.lookup_of_holds h ⟨11, by rw [lookup_count]; decide⟩
   have high := Verification.lookup_of_holds h ⟨12, by rw [lookup_count]; decide⟩
@@ -114,7 +118,7 @@ theorem pc_bounds {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     their own gated path; rd-is-zero is intentionally absent from this exclusion. -/
 theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 131072 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {initial final : Word}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (active : w 4 = 1) (outsideFamily2 : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (mapping : w 0 = (initial.lo : ZMod p) ∧ w 1 = (initial.hi : ZMod p) ∧
       final.lo = (w 30).val ∧ final.hi = (w 31).val) (initialBound : initial.Bounded) :
@@ -141,4 +145,7 @@ theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 131072 < p)
   have finalBound : final.Bounded := ⟨mapping.2.2.1 ▸ ranged.1, mapping.2.2.2 ▸ ranged.2⟩
   exact Word.increment_of_limbs hp (by decide) carry initialBound finalBound lowField highField
 
-end Airbender.UnifiedReduced.Proofs
+babybear_instances local_flags, dispatch_count, dispatch_exclusive, destination_bounds,
+  initial_pc_hi_bound, pc_bounds, pc_successor
+
+end Airbender.UnifiedReduced.Standard.Proofs

@@ -20,7 +20,7 @@ theorem zip_fst_sublist {S T : Type} (left : List S) (right : List T) :
       simpa only [List.zip_cons_cons, List.map_cons] using (ih rest).cons_cons head
 
 theorem state_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (constraints : ∀ row ∈ trace.rows,
       FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints trace.rom))
     (states : (trace.initial :: trace.rows.map Row.finish).Perm
@@ -39,7 +39,7 @@ theorem state_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     rawPair, decodeTimestamp] using unique
 
 theorem row_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     (trace.rows.map fun row => (decodeTimestamp row.assignment row.columns.initialTime).value).Nodup :=
   state_clocks_unique hp inverse accepted.constraints accepted.states boundary.initial boundary.aligned
@@ -60,11 +60,11 @@ theorem slots_unique {times : List Nat} (unique : times.Nodup)
     rcases leftMember with rfl | rfl | rfl <;>
       rcases rightMember with rfl | rfl | rfl <;> omega
 
-private theorem row_slots [Fact p.Prime] [ClockLaws Kind p] (row : Row p Kind) :
+private theorem row_slots [Fact p.Prime] {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (row : Row p Kind) :
     row.ports.toList.map (fun port =>
       (decodeTimestamp row.assignment row.columns.initialTime).value + port.clock.offset) =
       slots (decodeTimestamp row.assignment row.columns.initialTime).value := by
-  have offsets := ClockLaws.offsets row
+  have offsets := ClockLawsFor.offsets row
   have mapped := congrArg (List.map ((decodeTimestamp row.assignment row.columns.initialTime).value + ·)) offsets
   simpa only [List.map_map, Function.comp_def, List.map_cons, List.map_nil,
     Nat.add_zero, slots] using mapped
@@ -72,7 +72,7 @@ private theorem row_slots [Fact p.Prime] [ClockLaws Kind p] (row : Row p Kind) :
 /-- Every actual native memory-access write time is unique across all selected
     rows, including readonly refreshes. Imported offsets are 0/1/2. -/
 theorem access_times_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) : trace.accessTimes.Nodup := by
   let times := trace.rows.map fun row =>
     (decodeTimestamp row.assignment row.columns.initialTime).value

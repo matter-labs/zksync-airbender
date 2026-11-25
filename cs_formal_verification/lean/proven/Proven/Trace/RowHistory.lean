@@ -17,7 +17,7 @@ variable {Kind : Type} [CircuitLayout Kind]
 abbrev rowClock (row : Row p Kind) : Nat := row.clock
 
 theorem native_events_projection [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     trace.nativeEvents = trace.rows.flatMap (rowEvents trace.memoryEpoch) := by
   simp only [Data.nativeEvents, Data.memorySteps, List.map_flatMap]
@@ -38,12 +38,12 @@ theorem native_events_projection [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   rw [canonical]
   rfl
 
-private theorem row_events_sorted [Fact p.Prime] [ClockLaws Kind p]
+private theorem row_events_sorted [Fact p.Prime] {coefficient : ZMod p} [ClockLawsFor Kind p coefficient]
     (epoch : Nat) (row : Row p Kind) :
     MemoryAccessList.isTimestampSorted (rowEvents epoch row).reverse := by
   have decreasing : (row.ports.toList.reverse.map (fun port => port.clock.offset)).Pairwise
       (fun a b : Nat => b < a) := by
-    rw [List.map_reverse, ClockLaws.offsets row]
+    rw [List.map_reverse, ClockLawsFor.offsets row]
     decide
   have portsOrdered : row.ports.toList.reverse.Pairwise
       (fun a b => b.clock.offset < a.clock.offset) :=
@@ -62,7 +62,7 @@ private theorem row_events_sorted [Fact p.Prime] [ClockLaws Kind p]
   omega
 
 private theorem row_events_separated [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {first last : Row p Kind} (firstMember : first ∈ trace.rows) (lastMember : last ∈ trace.rows)
     (ordered : rowClock last < rowClock first)
@@ -85,7 +85,7 @@ private theorem row_events_separated [Fact p.Prime] (hp : 2 * timestampBase + 4 
 /-- Strict clocks give an instruction ordering, and each instruction's three
     accesses stay together. Neither witness row order nor expected reads are used. -/
 theorem native_row_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∃ rows : List (Row p Kind), rows.Perm trace.rows ∧
       rows.Pairwise (fun a b => rowClock b < rowClock a) ∧
@@ -119,7 +119,7 @@ theorem native_row_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 /-- The grouped instruction order is the complete native PC/timestamp path,
     including its public initial and terminal states. -/
 theorem ordered_row_state_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {rows : List (Row p Kind)} (permutation : rows.Perm trace.rows)
     (ordered : rows.Pairwise (fun a b => rowClock b < rowClock a)) :

@@ -247,7 +247,7 @@ theorem wires_memory (offset : Nat) :
     (CacheCoefficient.natural scalar).value hom cache = hom (scalar : F) := rfl
 
 @[simp] theorem coefficient_base (raw : Nat) (hom : Source.BaseField →+* R) (cache : CacheChallenges R) :
-    (CacheCoefficient.base raw).value hom cache = hom ((raw : F) * (montgomeryInverse : F)) := rfl
+    (CacheCoefficient.base raw).value hom cache = hom ((raw : F) * (CircuitField.montgomeryInverse babyBearModulus : F)) := rfl
 
 @[simp] theorem coefficient_memoryPower (index : Fin 6) (hom : Source.BaseField →+* R) (cache : CacheChallenges R) :
     (CacheCoefficient.memoryPower index).value hom cache = cache.memoryPowers index := rfl

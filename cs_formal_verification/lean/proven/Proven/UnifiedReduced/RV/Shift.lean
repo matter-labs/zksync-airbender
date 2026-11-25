@@ -4,18 +4,22 @@ public import Proven.Arithmetic.WordBytes
 public import Proven.Arithmetic.ShiftAssembly
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 private theorem shift_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (selected : w 26 = 1 ∧ w 27 = 0) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (i : Fin 4) : w (86 + 9 * i.val) = 9 ∧ ∀ j : Fin 8, w (87 + 9 * i.val + j.val) =
-      (#v[(i.val : ZMod p), leftByte w i, w 57 + w 8, w 10,
+      (#v[(i.val : ZMod p), leftByte (profile := profile) w i, w 57 + w 8, w 10,
         w (58 + 4 * i.val), w (59 + 4 * i.val), w (60 + 4 * i.val), w (61 + 4 * i.val)] : Vector (ZMod p) 8)[j] := by
   have h (j : Fin 9) := Verification.assertion_of_holds holds
     ⟨49 + 9 * i.val + j.val, by rw [constraint_count]; have := i.isLt; have := j.isLt; omega⟩
@@ -36,16 +40,16 @@ private theorem shift_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
 
 theorem shift_query_values [Fact p.Prime] (hp : 256 < p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 1 ∧ w 27 = 0) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0) :
     (w 57 + w 8).val < 32 ∧ (w 10).val < 8 ∧
-    (∀ i : Fin 4, (leftByte w i).val < 256) ∧
+    (∀ i : Fin 4, (leftByte (profile := profile) w i).val < 256) ∧
     ∀ i j : Fin 4, (w (58 + 4 * i.val + j.val)).val =
-      ((Verification.shiftByteContribution i.val (leftByte w i).val
+      ((Verification.shiftByteContribution i.val (leftByte (profile := profile) w i).val
         (w 57 + w 8).val (w 10).val).extractLsb' (8 * j.val) 8).toNat := by
   have values (i : Fin 4) : (w 57 + w 8).val < 32 ∧ (w 10).val < 8 ∧
-      (leftByte w i).val < 256 ∧ ∀ j : Fin 4, (w (58 + 4 * i.val + j.val)).val =
-        ((Verification.shiftByteContribution i.val (leftByte w i).val
+      (leftByte (profile := profile) w i).val < 256 ∧ ∀ j : Fin 4, (w (58 + 4 * i.val + j.val)).val =
+        ((Verification.shiftByteContribution i.val (leftByte (profile := profile) w i).val
           (w 57 + w 8).val (w 10).val).extractLsb' (8 * j.val) 8).toNat := by
     have wires := shift_wiring holds selected other i
     have query := Verification.lookup_of_holds holds ⟨14 + i.val, by rw [lookup_count]; have := i.isLt; omega⟩
@@ -72,24 +76,24 @@ theorem shift_query_values [Fact p.Prime] (hp : 256 < p)
   exact ⟨(values 0).1, (values 0).2.1, fun i => (values i).2.2.1, fun i j => (values i).2.2.2 j⟩
 
 theorem shift_left_bytes [Fact p.Prime] (hp : 65536 < p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+    (inverse : 256 * (profile.byteInv : ZMod p) = 1)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 1 ∧ w 27 = 0) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0) :
-    ∀ i : Fin 4, leftByte w i =
+    ∀ i : Fin 4, leftByte (profile := profile) w i =
       (((Word.mk (w 36).val (w 37).val).toBitVec.extractLsb' (8 * i.val) 8).toNat : ZMod p) := by
-  exact Word.byte_fields hp (w 36) (w 37) (leftByte w) (shift_query_values (by omega) holds selected other).2.2.1
-    (by change w 74 + 256 * (-7864320 * (w 36 - w 74)) = w 36
+  exact Word.byte_fields hp (w 36) (w 37) (leftByte (profile := profile) w) (shift_query_values (by omega) holds selected other).2.2.1
+    (by change w 74 + 256 * (profile.byteInv * (w 36 - w 74)) = w 36
         linear_combination (w 36 - w 74) * inverse)
-    (by change w 75 + 256 * (-7864320 * (w 37 - w 75)) = w 37
+    (by change w 75 + 256 * (profile.byteInv * (w 37 - w 75)) = w 37
         linear_combination (w 37 - w 75) * inverse)
 
 theorem shift_amount [Fact p.Prime] (hp : 256 < p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 1 ∧ w 27 = 0) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (load : w 28 = 0) :
-    (w 76).val < 256 ∧ (-7864320 * (w 42 - w 76)).val < 256 ∧ (w 57).val = (w 76).val % 32 := by
+    (w 76).val < 256 ∧ (profile.byteInv * (w 42 - w 76)).val < 256 ∧ (w 57).val = (w 76).val % 32 := by
   have gate := Verification.assertion_of_holds holds ⟨39, by rw [constraint_count]; decide⟩
   op_index at gate
   simp [Expression.eval, Verification.environment, load] at gate
@@ -100,7 +104,7 @@ theorem shift_amount [Fact p.Prime] (hp : 256 < p)
     selected.1, selected.2, other.1, other.2.1, other.2.2.1, other.2.2.2, gate] at t a b c
   have tag : w 82 = 8 := by linear_combination t
   have first : w 83 = w 76 := by linear_combination a
-  have second : w 84 = -7864320 * (w 42 - w 76) := by linear_combination b
+  have second : w 84 = profile.byteInv * (w 42 - w 76) := by linear_combination b
   have amount : w 85 = w 57 := by linear_combination c
   have query := Verification.lookup_of_holds holds ⟨13, by rw [lookup_count]; decide⟩
   have standard := Setup.Proofs.RV.ordinary_lookup (by omega : 55 ≤ p) query 8 (Or.inr (Or.inl rfl))
@@ -111,9 +115,9 @@ theorem shift_amount [Fact p.Prime] (hp : 256 < p)
 
 theorem shift_destination [Fact p.Prime] (hp : 262144 < p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 1 ∧ w 27 = 0) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
-    (x : BitVec 32) (operand : ∀ i : Fin 4, leftByte w i = ((x.extractLsb' (8 * i.val) 8).toNat : ZMod p))
+    (x : BitVec 32) (operand : ∀ i : Fin 4, leftByte (profile := profile) w i = ((x.extractLsb' (8 * i.val) 8).toNat : ZMod p))
     (operation : (w 10).val = 1 ∨ (w 10).val = 2 ∨ (w 10).val = 3 ∨ (w 10).val = 5)
     (reverse : (w 10).val = 5 → (w 57 + w 8).val = 0) :
     (Word.mk (w 50).val (w 51).val).toBitVec = Verification.shiftOperation (w 10).val x (w 57 + w 8).val := by
@@ -121,7 +125,7 @@ theorem shift_destination [Fact p.Prime] (hp : 262144 < p)
   have bytes := queries.2.2.2
   have small (i j : Fin 4) : (w (58 + 4 * i.val + j.val)).val < 256 := by
     rw [bytes i j]
-    exact ((Verification.shiftByteContribution i.val (leftByte w i).val
+    exact ((Verification.shiftByteContribution i.val (leftByte (profile := profile) w i).val
       (w 57 + w 8).val (w 10).val).extractLsb' (8 * j.val) 8).isLt
   have low := Verification.assertion_of_holds holds ⟨24, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds holds ⟨25, by rw [constraint_count]; decide⟩
@@ -140,4 +144,6 @@ theorem shift_destination [Fact p.Prime] (hp : 262144 < p)
   · exact lo
   · exact hi
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances shift_query_values, shift_left_bytes, shift_amount, shift_destination
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

@@ -65,8 +65,8 @@ theorem unified_ordinary_cycle {trace : UnifiedTrace babyBearModulus} {workers :
     programImage present data query (accepted.constraints ⟨.machine, w⟩ member)
     (accepted.active _ member) clock reads aligned setup fields decoded grouped
     (ordered.sublist List.filter_sublist) history rom
-  obtain ⟨next, executed, same⟩ := UnifiedReduced.Proofs.RV.row_step (by decide) (by decide) facts
+  obtain ⟨next, executed, same⟩ := UnifiedReduced.Standard.Proofs.RV.row_step_field .babyBear facts
   have fetched := fetch_decoded programImage present decoded rom (state := before.setPC entry.pc) rfl
-  exact ⟨next, fetched.trans executed, same⟩
+  exact ⟨next, fetched.trans ((RV.execAt_default _ _).symm.trans executed), same⟩
 
 end Airbender.Trace.Machine.Proofs

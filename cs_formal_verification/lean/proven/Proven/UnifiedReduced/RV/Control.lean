@@ -6,13 +6,17 @@ public import Proven.UnifiedReduced.ControlContext
 public import Proven.JumpBranchSlt.RVRow
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
 /-! Jump/branch/comparison rows (decoder bits 10–14) on the RV route. Comparisons and branches project onto the
     JumpBranchSlt circuit (`control_constraints`) and reuse its RV row lemmas (`rv_comparison_exec`,
     `rv_branch_exec`); jumps use the unified jump arithmetic (`jump_link`, `jump_pc`). -/
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
@@ -20,7 +24,7 @@ set_option maxRecDepth 16384
 /-- A comparison or branch row seen as a JumpBranchSlt row (`controlAssignment`), and its destination update. -/
 theorem control_row_facts {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → BitVec 32}
     {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry}
-    {i : RV.Instr} (facts : RowFacts words cells epoch w s after entry i) {j : DecoderData Unit}
+    {i : RV.Instr} (facts : RowFacts profile words cells epoch w s after entry i) {j : DecoderData Unit}
     (data : entry.data = jumpFields j) (jbs : JumpBranchSlt.rvDecoderFields i = some j)
     (shape : j.mask = 4 ∨ j.mask = 24) (form : j.mask = 4 → j.rs2 = 0 ∨ j.immediate = ⟨0, 0⟩) :
     JumpBranchSlt.Proofs.RVRowFacts (controlAssignment w) s j ∧
@@ -128,7 +132,7 @@ theorem control_row_facts {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words :
 theorem comparison_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → BitVec 32}
     {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry}
     (input : JumpBranchSlt.Comparison.RVInput) (before : input.before = s)
-    (facts : RowFacts words cells epoch w s after entry (JumpBranchSlt.Comparison.rvInstruction input))
+    (facts : RowFacts profile words cells epoch w s after entry (JumpBranchSlt.Comparison.rvInstruction input))
     (data : entry.data = jumpFields (JumpBranchSlt.Proofs.comparisonData input))
     (jbs : JumpBranchSlt.rvDecoderFields (JumpBranchSlt.Comparison.rvInstruction input) =
       some (JumpBranchSlt.Proofs.comparisonData input)) :
@@ -153,7 +157,7 @@ theorem comparison_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : N
 theorem branch_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → BitVec 32}
     {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry}
     (input : JumpBranchSlt.Branch.RVInput) (before : input.before = s)
-    (facts : RowFacts words cells epoch w s after entry (JumpBranchSlt.Branch.rvInstruction input))
+    (facts : RowFacts profile words cells epoch w s after entry (JumpBranchSlt.Branch.rvInstruction input))
     (data : entry.data = jumpFields (JumpBranchSlt.Proofs.branchData input))
     (jbs : JumpBranchSlt.rvDecoderFields (JumpBranchSlt.Branch.rvInstruction input) =
       some (JumpBranchSlt.Proofs.branchData input)) :
@@ -170,4 +174,6 @@ theorem branch_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat �
   have quiet := (same_set_zero input.before _).symm.trans write.symm
   exact ⟨rfl, fun k => quiet.2.1 k, quiet.2.2.1, quiet.2.2.2.1, quiet.2.2.2.2⟩
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances control_row_facts, comparison_step, branch_step
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

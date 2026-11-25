@@ -6,22 +6,26 @@ public import Proven.CleanCore.Circuit.Operations
 public import Proven.Defs.Helpers.Memory.RowEvents
 public import Proven.Defs.Helpers.Core.Word
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
 /-! The per-row obligation of the unified RV route (`RowStep`: `RV.exec` of the row's decoded instruction agrees with
     the row's RV history followed by its final PC) and the facts every row gives (`RowFacts`). Proved here for the NOP
     rows (x0 preprocessing), ADD/SUB/ADDI/LUI/AUIPC and TRIADD. -/
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 /-- What the trace gives for one unified row at RV pre-state `s` (its RV history ends in `after`), fetched from the
     RV program entry `entry`, whose bytes decode to `i`. -/
-structure RowFacts {p : Nat} [Fact p.Prime] (words : Nat → BitVec 32) (cells : List Cell) (epoch : Nat)
+structure RowFacts (profile : Profile) {p : Nat} [Fact p.Prime] (words : Nat → BitVec 32) (cells : List Cell) (epoch : Nat)
     (w : Nat → ZMod p) (s after : RV.State) (entry : RVProgramEntry) (i : RV.Instr) : Prop where
-  core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words))
+  core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words))
   active : w 4 = 1
   query : decoderQuery w = entry.query
   fields : rvDecoderFields i = some entry.data
@@ -48,33 +52,33 @@ theorem mask_column {p : Nat} {w : Nat → ZMod p} {mask : Nat}
 
 theorem RowFacts.flags {p : Nat} [Fact p.Prime] (hp : 524288 < p) {words : Nat → BitVec 32} {cells : List Cell}
     {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry} {i : RV.Instr}
-    (facts : RowFacts words cells epoch w s after entry i) :
+    (facts : RowFacts profile words cells epoch w s after entry i) :
     ∀ k : Fin 19, w (11 + k.val) = if entry.data.mask.testBit k.val then 1 else 0 :=
   mask_column (rv_decoder_selectors hp facts.core (rv_field_bounds facts.fields).2.1 facts.query)
 
 theorem RowFacts.pcWord {p : Nat} [Fact p.Prime] (hp : limbBase < p) {words : Nat → BitVec 32}
     {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry}
-    {i : RV.Instr} (facts : RowFacts words cells epoch w s after entry i) :
+    {i : RV.Instr} (facts : RowFacts profile words cells epoch w s after entry i) :
     Word.mk (w 0).val (w 1).val = Word.ofBitVec s.pc := by
   rw [facts.pc]
   exact rv_native_query_pc_word hp facts.query
 
 theorem RowFacts.immediate {p : Nat} [Fact p.Prime] (hp : limbBase < p) {words : Nat → BitVec 32}
     {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry}
-    {i : RV.Instr} (facts : RowFacts words cells epoch w s after entry i) :
+    {i : RV.Instr} (facts : RowFacts profile words cells epoch w s after entry i) :
     Word.mk (w 8).val (w 9).val = entry.data.immediate :=
   rv_native_query_immediate_word hp (rv_field_bounds facts.fields).1 facts.query
 
 theorem RowFacts.indices {p : Nat} [Fact p.Prime] (hp : limbBase < p) {words : Nat → BitVec 32}
     {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry}
-    {i : RV.Instr} (facts : RowFacts words cells epoch w s after entry i) :
+    {i : RV.Instr} (facts : RowFacts profile words cells epoch w s after entry i) :
     (w 5).val = entry.data.rs1.toNat ∧ (w 6).val = entry.data.rs2.toNat ∧ (w 7).val = entry.data.rd.toNat :=
   rv_native_query_indices hp facts.query
 
 /-- Rows outside the jump/branch/comparison selectors advance the PC by four. -/
 theorem RowFacts.nextPC {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → BitVec 32}
     {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry}
-    {i : RV.Instr} (facts : RowFacts words cells epoch w s after entry i)
+    {i : RV.Instr} (facts : RowFacts profile words cells epoch w s after entry i)
     (outside : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0) :
     (Word.mk (w 30).val (w 31).val).toBitVec = s.pc + 4 := by
   have low := congrArg (fun q : Vector (ZMod p) 9 => q[0]) facts.query
@@ -136,7 +140,7 @@ theorem nop_exec (s : RV.State) {i : RV.Instr} (nop : rvNopWrite i = true) :
 /-- A NOP row (ADD x0, x0, x0) retires the reduced machine's `Nop`. -/
 theorem nop_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → BitVec 32} {cells : List Cell}
     {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry} {i : RV.Instr}
-    (facts : RowFacts words cells epoch w s after entry i) (nop : rvNopWrite i = true)
+    (facts : RowFacts profile words cells epoch w s after entry i) (nop : rvNopWrite i = true)
     (data : entry.data = rvNopFields) : RowStep w s after i := by
   have flags := facts.flags (by omega)
   rw [data] at flags
@@ -158,7 +162,7 @@ theorem limbs_cast {p : Nat} [Fact p.Prime] (x : ZMod p) : ((x.val : Nat) : ZMod
 
 theorem add_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p) {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (selected : w 11 = 1) (others : w 12 = 0 ∧ w 13 = 0 ∧ w 14 = 0 ∧ w 15 = 0 ∧ w 16 = 0 ∧ w 17 = 0 ∧ w 20 = 0)
     (left : (Word.mk (w 36).val (w 37).val).Bounded) (right : (Word.mk (w 42).val (w 43).val).Bounded)
     (immediate : (Word.mk (w 8).val (w 9).val).Bounded) :
@@ -181,7 +185,7 @@ theorem add_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p) {setup : Table (ZMo
 
 theorem sub_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p) {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (selected : w 12 = 1) (others : w 11 = 0 ∧ w 13 = 0 ∧ w 14 = 0 ∧ w 15 = 0 ∧ w 16 = 0 ∧ w 17 = 0 ∧ w 20 = 0)
     (left : (Word.mk (w 36).val (w 37).val).Bounded) (right : (Word.mk (w 42).val (w 43).val).Bounded) :
     (Word.mk (w 50).val (w 51).val).toBitVec = (Word.mk (w 36).val (w 37).val).toBitVec -
@@ -203,7 +207,7 @@ theorem sub_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p) {setup : Table (ZMo
 
 theorem auipc_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p) {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (selected : w 13 = 1) (others : w 11 = 0 ∧ w 12 = 0 ∧ w 14 = 0 ∧ w 15 = 0 ∧ w 16 = 0 ∧ w 17 = 0 ∧ w 20 = 0)
     (pc : (Word.mk (w 0).val (w 1).val).Bounded) (immediate : (Word.mk (w 8).val (w 9).val).Bounded) :
     (Word.mk (w 50).val (w 51).val).toBitVec = (Word.mk (w 0).val (w 1).val).toBitVec +
@@ -227,7 +231,7 @@ theorem auipc_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p) {setup : Table (Z
 
 theorem triadd_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p) {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (selected : w 20 = 1) (others : w 11 = 0 ∧ w 12 = 0 ∧ w 13 = 0 ∧ w 14 = 0 ∧ w 15 = 0 ∧ w 16 = 0 ∧ w 17 = 0)
     (left : (Word.mk (w 36).val (w 37).val).Bounded) (right : (Word.mk (w 42).val (w 43).val).Bounded)
     (old : (Word.mk (w 48).val (w 49).val).Bounded) :
@@ -253,4 +257,8 @@ theorem triadd_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p) {setup : Table (
     (by push_cast; simp only [limbs_cast]; linear_combination lo)
     (by push_cast; simp only [limbs_cast]; linear_combination hi)
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances RowFacts, RowStep, mask_column, RowFacts.flags, RowFacts.pcWord, RowFacts.immediate,
+  RowFacts.indices, RowFacts.nextPC, same_set_zero, nop_exec, nop_step, limbs_cast, add_limbs,
+  sub_limbs, auipc_limbs, triadd_limbs
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

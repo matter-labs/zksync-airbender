@@ -8,33 +8,37 @@ public import Proven.Constraints
 public import Proven.Arithmetic.Bytes
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Verification
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 def leftByte {p : Nat} (w : Nat → ZMod p) (i : Fin 4) : ZMod p :=
   match i.val with
-  | 0 => w 74 | 1 => -7864320 * (w 36 - w 74)
-  | 2 => w 75 | _ => -7864320 * (w 37 - w 75)
+  | 0 => w 74 | 1 => profile.byteInv * (w 36 - w 74)
+  | 2 => w 75 | _ => profile.byteInv * (w 37 - w 75)
 
 def rightByte {p : Nat} (w : Nat → ZMod p) (i : Fin 4) : ZMod p :=
   match i.val with
-  | 0 => w 76 | 1 => -7864320 * (w 42 - w 76)
-  | 2 => w 77 | _ => -7864320 * (w 43 - w 77)
+  | 0 => w 76 | 1 => profile.byteInv * (w 42 - w 76)
+  | 2 => w 77 | _ => profile.byteInv * (w 43 - w 77)
 
 def immediateByte {p : Nat} (w : Nat → ZMod p) (i : Fin 4) : ZMod p :=
   if i.val = 0 then w 8 else if i.val = 1 then w 9 else w 57
 
 theorem binary_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (i : Fin 4) :
     w (86 + 9 * i.val) = w 10 ∧
-      w (87 + 9 * i.val) = leftByte w i ∧
-      w (88 + 9 * i.val) = rightByte w i + immediateByte w i ∧
+      w (87 + 9 * i.val) = leftByte (profile := profile) w i ∧
+      w (88 + 9 * i.val) = rightByte (profile := profile) w i + immediateByte w i ∧
       (∀ j : Fin 4, w (89 + 9 * i.val + j.val) = w (58 + 4 * i.val + j.val)) ∧
       w (93 + 9 * i.val) = 0 ∧ w (94 + 9 * i.val) = 0 := by
   have h (j : Fin 9) := Verification.assertion_of_holds holds
@@ -60,14 +64,14 @@ theorem binary_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : N
 
 theorem binary_query_values [Fact p.Prime] (hp : 256 < p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (tag : Nat) (valid : tag = 4 ∨ tag = 6 ∨ tag = 7) (funct3 : w 10 = (Setup.binaryTag tag : ZMod p))
     (i : Fin 4) :
-    (leftByte w i).val < 256 ∧ (rightByte w i + immediateByte w i).val < 256 ∧
+    (leftByte (profile := profile) w i).val < 256 ∧ (rightByte (profile := profile) w i + immediateByte w i).val < 256 ∧
       (w (58 + 4 * i.val)).val < 256 ∧
       BitVec.ofNat 8 (w (58 + 4 * i.val)).val = byteOperation tag
-        (BitVec.ofNat 8 (leftByte w i).val) (BitVec.ofNat 8 (rightByte w i + immediateByte w i).val) ∧
+        (BitVec.ofNat 8 (leftByte (profile := profile) w i).val) (BitVec.ofNat 8 (rightByte (profile := profile) w i + immediateByte w i).val) ∧
       ∀ j : Fin 3, w (59 + 4 * i.val + j.val) = 0 := by
   have wires := binary_wiring holds selected other i
   have query := Verification.lookup_of_holds holds
@@ -95,4 +99,6 @@ theorem binary_query_values [Fact p.Prime] (hp : 256 < p)
         | simpa [Expression.eval, Verification.environment, e] using result.2.2.2.2 1
         | simpa [Expression.eval, Verification.environment, f] using result.2.2.2.2 2
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances leftByte, rightByte, immediateByte, binary_wiring, binary_query_values
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

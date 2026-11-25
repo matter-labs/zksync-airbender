@@ -164,7 +164,7 @@ theorem cell_history_of_path {p : Nat} (steps : List (MemoryToken p × MemoryTok
     exact (projectedPermutation.append_right _).trans (List.perm_append_comm)
 
 theorem native_cell_histories [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ source ∈ trace.initialMemory, ∃ history, CellHistory trace source history := by

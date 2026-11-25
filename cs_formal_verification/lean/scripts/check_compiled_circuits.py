@@ -47,6 +47,8 @@ GENERATORS = {
         'gkr_circuits::mem_subword_only::circuit::test::compile_mem_subword_only_circuit_into_no_caches_gkr',
     'unified_reduced_machine_layout_gkr.json':
         'gkr_circuits::unified_reduced_machine::circuit::test::compile_unified_reduced_machine_into_gkr',
+    'unified_reduced_machine_layout_gkr_proth120.json':
+        'gkr_circuits::unified_reduced_machine::circuit::test::compile_unified_reduced_machine_into_gkr_large_field',
     'unified_reduced_machine_layout_no_caches_gkr.json':
         'gkr_circuits::unified_reduced_machine::circuit::test::compile_unified_reduced_machine_into_no_caches_gkr',
     'bigint_with_extended_control_layout_gkr.json':

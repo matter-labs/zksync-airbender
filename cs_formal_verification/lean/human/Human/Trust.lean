@@ -37,6 +37,8 @@ def declarationCommandModules : List String := [
   "Human.Import.Exec.Emit",
   "Human.Import.Exec.FastColumns",
   "Human.Import.Exec.InitsTeardowns",
+  "Human.Import.Exec.Proth120Native",
+  "Human.Import.Exec.Proth120Rows",
   "Human.Import.NativeRamProducts",
   "Human.Import.SetupEmit",
   "Human.Import.TranscribeCommand"]

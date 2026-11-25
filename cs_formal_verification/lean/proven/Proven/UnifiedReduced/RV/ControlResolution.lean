@@ -3,9 +3,13 @@ public import Proven.UnifiedReduced.RV.ControlQueries
 public import Proven.UnifiedReduced.ControlKey
 public import Proven.CleanCore.Circuit.Lookup
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Verification
 set_option warningAsError true
 set_option maxRecDepth 16384
@@ -13,7 +17,7 @@ set_option maxHeartbeats 1600000
 
 theorem control_conditional_lookup [Fact p.Prime] (hp : 4194304 ≤ p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 21 + w 22 + w 23 + w 24 = 1)
     (binary : w 26 = 0 ∧ w 27 = 0) (rom : w 81 = 0)
     (leftHi : (w 37).val < 65536) (rightHi : (w 60).val < 65536)
@@ -64,4 +68,6 @@ theorem control_conditional_lookup [Fact p.Prime] (hp : 4194304 ≤ p)
   · exact originalCast.symm
   · simpa only [nativeValue, ← same] using values.2.2.2.2.1
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances control_conditional_lookup
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

@@ -9,6 +9,33 @@ open Arithmetic
 set_option warningAsError true
 set_option backward.isDefEq.respectTransparency false
 
+/-- The two native BabyBear gates shared by the circuit row and the machine interface proof. -/
+theorem native_equations {w : Nat → ZMod babyBearModulus}
+    {setup : Table (ZMod babyBearModulus) (fields 10)}
+    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
+    let v := lift w
+    (v 25 + 65536 * v 26) * (v 29 + 65536 * v 30) * 943718400 +
+      (v 31 + 65536 * v 32) * v 16 - v 41 = 0 ∧
+    (v 33 + 65536 * v 34 - (v 25 + 65536 * v 26 + v 29 + 65536 * v 30)) * v 13 +
+      (v 33 + 65536 * v 34 - (v 25 + 65536 * v 26 - (v 29 + 65536 * v 30))) * v 14 +
+      (v 33 + 65536 * v 34 - v 41) * (v 15 + v 16) = 0 := by
+  dsimp only
+  constructor
+  · have intermediate := Verification.assertion_of_holds constraints
+      ⟨1, by rw [constraint_count]; decide⟩
+    op_index at intermediate
+    simp [Expression.eval,
+      Verification.environment] at intermediate
+    simp only [lift]
+    linear_combination intermediate
+  · have result := Verification.assertion_of_holds constraints
+      ⟨2, by rw [constraint_count]; decide⟩
+    op_index at result
+    simp [Expression.eval,
+      Verification.environment] at result
+    simp only [lift]
+    linear_combination result
+
 /-- The unified field branches reuse the standalone arithmetic equations under the native column map. -/
 theorem modular_result {input : AddSub.Modular.Input} {output : Circuit.Output}
     {w : Nat → ZMod babyBearModulus}
@@ -38,20 +65,8 @@ theorem modular_result {input : AddSub.Modular.Input} {output : Circuit.Output}
       canonical_output constraints nonstandard.1 nonstandard.2.1
         nonstandard.2.2 noTriAdd selected
   apply AddSub.Proofs.modular_result_of_equations interfaces mapping nonzero canonical
-  · have intermediate := Verification.assertion_of_holds constraints
-      ⟨1, by rw [constraint_count]; decide⟩
-    op_index at intermediate
-    simp [Expression.eval,
-      Verification.environment] at intermediate
-    simp only [lift]
-    linear_combination intermediate
-  · have result := Verification.assertion_of_holds constraints
-      ⟨2, by rw [constraint_count]; decide⟩
-    op_index at result
-    simp [Expression.eval,
-      Verification.environment] at result
-    simp only [lift]
-    linear_combination result
+  · exact (native_equations constraints).1
+  · exact (native_equations constraints).2
 
 
 end Airbender.UnifiedReduced.Modular.Proofs

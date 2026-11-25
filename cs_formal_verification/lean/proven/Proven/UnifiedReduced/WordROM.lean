@@ -4,19 +4,24 @@ public import Human.Circuits.UnifiedReduced.Tables.Setup
 public import Proven.ByteTables
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs
+namespace Airbender.UnifiedReduced.Standard.Proofs
+variable {profile : Profile}
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 theorem word_rom_selection [Fact p.Prime] (hp : 131072 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} (store : Bool)
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (selected : w 28 = if store then 0 else 1) (other : w 29 = if store then 1 else 0) :
-    w 54 = (if (w (if store then 45 else 39)).val < 64 then 1 else 0) ∧
-      (store = true → 64 ≤ (w 45).val) := by
+    w 54 = (if (w (if store then 45 else 39)).val < profile.romLimbs then 1 else 0) ∧
+      (store = true → profile.romLimbs ≤ (w 45).val) := by
+  have limbsBound : profile.romLimbs ≤ 64 := by cases profile <;> decide
   have index := Verification.assertion_of_holds holds ⟨if store then 35 else 34,
     by rw [constraint_count]; split <;> decide⟩
   have residue := Verification.assertion_of_holds holds ⟨36, by rw [constraint_count]; decide⟩
@@ -31,7 +36,7 @@ theorem word_rom_selection [Fact p.Prime] (hp : 131072 < p)
     all_goals simp [Expression.eval, Verification.environment, selected, other] at index
     all_goals simp only [Bool.false_eq_true, ite_false, ite_true]
     all_goals linear_combination index
-  have equation : w 80 + 64 = w (if store then 45 else 39) + 65536 * w 54 := by
+  have equation : w 80 + profile.romLimbs = w (if store then 45 else 39) + 65536 * w 54 := by
     cases store
     all_goals simp [Expression.eval, Verification.environment, selected, other] at residue
     all_goals simp only [Bool.false_eq_true, ite_false, ite_true] at indexed ⊢
@@ -47,20 +52,20 @@ theorem word_rom_selection [Fact p.Prime] (hp : 131072 < p)
       op_index at bound
       replace bound := Verification.range16_bound bound
       simpa [Expression.eval, Verification.environment, limbBase] using bound
-  have classify : w 54 = (if (w (if store then 45 else 39)).val < 64 then 1 else 0) := by
+  have classify : w 54 = (if (w (if store then 45 else 39)).val < profile.romLimbs then 1 else 0) := by
     have flag := local_flags holds 22
     change w 54 = 0 ∨ w 54 = 1 at flag
     rcases flag with zero | one
     · rw [zero] at equation
-      have equal : (w 80).val + 64 = (w (if store then 45 else 39)).val := by
+      have equal : (w 80).val + profile.romLimbs = (w (if store then 45 else 39)).val := by
         apply bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega)
         simpa only [Nat.cast_add, Nat.cast_ofNat, ZMod.natCast_zmod_val, mul_zero, add_zero] using equation
-      simp [zero, show ¬(w (if store then 45 else 39)).val < 64 by omega]
+      simp [zero, show ¬(w (if store then 45 else 39)).val < profile.romLimbs by omega]
     · rw [one] at equation
-      have equal : (w 80).val + 64 = (w (if store then 45 else 39)).val + 65536 := by
+      have equal : (w 80).val + profile.romLimbs = (w (if store then 45 else 39)).val + 65536 := by
         apply bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega)
         simpa only [Nat.cast_add, Nat.cast_ofNat, ZMod.natCast_zmod_val, mul_one] using equation
-      simp [one, show (w (if store then 45 else 39)).val < 64 by omega]
+      simp [one, show (w (if store then 45 else 39)).val < profile.romLimbs by omega]
   refine ⟨classify, ?_⟩
   intro storeMode
   have readonly := Verification.assertion_of_holds holds ⟨38, by rw [constraint_count]; decide⟩
@@ -68,10 +73,12 @@ theorem word_rom_selection [Fact p.Prime] (hp : 131072 < p)
   simp [Expression.eval, Verification.environment, other, storeMode] at readonly
   change w 54 = 0 at readonly
   rw [storeMode] at classify
-  change w 54 = (if (w 45).val < 64 then 1 else 0) at classify
+  change w 54 = (if (w 45).val < profile.romLimbs then 1 else 0) at classify
   by_contra below
-  have small : (w 45).val < 64 := by omega
+  have small : (w 45).val < profile.romLimbs := by omega
   rw [ite_eq_left small, readonly] at classify
   exact zero_ne_one classify
 
-end Airbender.UnifiedReduced.Proofs
+babybear_instances word_rom_selection
+
+end Airbender.UnifiedReduced.Standard.Proofs

@@ -1,3 +1,16 @@
+import Proven.Final.Circuits.UnifiedReduced.Modular
+import Proven.Final.Trace.UnifiedReduced.Proth120Padding
+import Proven.Final.Trace.UnifiedReduced.Proth120NativeTrace
+import Proven.Final.Circuits.UnifiedReduced.Proth120Input
+import Proven.Final.Circuits.UnifiedReduced.Proth120Artifact
+import Proven.Final.Circuits.UnifiedReduced.Proth120Clock
+import Proven.Final.Circuits.UnifiedReduced.Proth120Execution
+import Proven.Final.Circuits.UnifiedReduced.Proth120Modular
+import Proven.Final.Circuits.UnifiedReduced.Proth120Native
+import Proven.Final.Circuits.UnifiedReduced.Proth120NativeStep
+import Proven.Final.Trace.UnifiedReduced.Proth120Trace
+import Proven.Final.Circuits.UnifiedReduced.Proth120Windows
+import Proven.Final.Circuits.UnifiedReduced.Proth120Witness
 import Proven.Final.Import.Theorems
 import Proven.Final.Compiler.WorkerCertificates
 import Proven.Final.Compiler.WorkerArithmetic
@@ -1956,3 +1969,78 @@ example : Airbender.InitsTeardowns.SharedBytesSatisfiableClaim := Airbender.Init
 theorem Airbender.InitsTeardowns.SharedBytesClaim.applied (claim : Airbender.InitsTeardowns.SharedBytesClaim) : Airbender.InitsTeardowns.SharedBytesSatisfiableClaim →
     Airbender.InitsTeardowns.sharedLayoutCircuit.placement_data.entries.size = 32 :=
   fun ⟨_, decoded, entries⟩ => Except.ok.inj (decoded.symm.trans claim) ▸ entries
+
+namespace Airbender.UnifiedReduced.Proth120
+open Arithmetic InitsTeardowns Verification
+
+theorem ClockAdvanceClaim.applied (claim : ClockAdvanceClaim) : ClockAdvanceSatisfiableClaim →
+    ∃ w : Nat → F, (decodeTimestamp w importedConstraintsTraceColumns.finalTime).value =
+      (decodeTimestamp w importedConstraintsTraceColumns.initialTime).value + 4 :=
+  fun ⟨setup, w, holds, bounded, _⟩ => ⟨w, claim setup w holds bounded⟩
+
+theorem ModularResultClaim.applied (claim : ModularResultClaim) : ModularResultSatisfiableClaim →
+    ∃ (w : Nat → F) (op : AddSub.Modular.Opcode), (wordAt w 50).toBitVec =
+      RV.mopVal op.rvOp (wordAt w 36).toBitVec (wordAt w 42).toBitVec (wordAt w 48).toBitVec :=
+  fun ⟨setup, w, op, holds, selected, a, b, c, _⟩ => ⟨w, op, claim setup w op holds selected a b c⟩
+
+theorem WindowTokensClaim.applied (claim : WindowTokensClaim) : WindowTokensSatisfiableClaim →
+    ∃ (w : InitsTeardowns.Witness proth120Modulus importedLayout) (s : Fin importedLayout.sets.size)
+      (r : Fin (2 ^ importedLayout.traceLog)),
+      let addr := windowAddress importedLayout w.topBits[s] r
+      let set := importedLayout.sets[s]
+      addr < 2 ^ 31 ∧ (Cell.ram (BitVec.ofNat 32 addr)).Aligned ∧
+        initToken (p := proth120Modulus) importedLayout w.topBits[s] r = (Cell.ram (BitVec.ofNat 32 addr)).initialToken 0 ∧
+        teardownToken importedLayout set w.topBits[s] r (w.assignment r) =
+          ⟨(Cell.ram (BitVec.ofNat 32 addr)).addressCode, rawPair (w.assignment r) set.timestamp,
+            pairCode (w.assignment r) set.value⟩ :=
+  fun ⟨w, s, r, bound, _⟩ => ⟨w, s, r, claim w s r bound⟩
+
+theorem RowSoundnessClaim.applied (claim : RowSoundnessClaim) : RowSoundnessSatisfiableClaim →
+    ∃ w before after, StepResult w before after :=
+  fun ⟨cells, epoch, w, before, after, premises⟩ => ⟨w, before, after, claim cells epoch w before after premises⟩
+
+theorem NativeArithmeticClaim.applied (claim : NativeArithmeticClaim) : NativeArithmeticSatisfiableClaim →
+    ∃ logical, EquationsHold logical :=
+  fun ⟨physical, logical, arithmetic⟩ => ⟨logical, claim physical logical arithmetic⟩
+
+theorem NativeRowClaim.applied (claim : NativeRowClaim) : NativeRowSatisfiableClaim →
+    ∃ (setup : Table F (fields 10)) (decode : Vector F 9 → Prop) (logical : Nat → F),
+      FlatOperation.ConstraintsHoldFlat (environment logical) (clockConstraints setup) ∧
+        (logical importedConstraintsTraceColumns.execute = 1 →
+          decode (nativeDecoderQuery importedConstraintsTraceColumns importedConstraintsDecoderColumns logical)) :=
+  fun ⟨setup, decode, rows, physical, logical, arithmetic, matched, _⟩ =>
+    ⟨setup, decode, logical, claim setup decode rows physical logical arithmetic matched⟩
+
+theorem NativeStepSoundnessClaim.applied (claim : NativeStepSoundnessClaim) : NativeStepSoundnessSatisfiableClaim →
+    ∃ w before after, StepResult w before after :=
+  fun ⟨cells, epoch, before, after, physical, w, tables, ctx, arithmetic, matched⟩ =>
+    ⟨w, before, after, claim cells epoch before after physical w tables ctx arithmetic matched⟩
+
+theorem TraceSoundnessClaim.applied (claim : TraceSoundnessClaim) : TraceSoundnessSatisfiableClaim →
+    ∃ trace initial cells, TraceResult trace initial cells :=
+  fun ⟨trace, initial, cells, premises, accepted, _⟩ => ⟨trace, initial, cells, claim trace initial cells premises accepted⟩
+
+theorem NativeTraceSoundnessClaim.applied (claim : NativeTraceSoundnessClaim) : NativeTraceSoundnessSatisfiableClaim →
+    ∃ trace initial cells, TraceResult trace initial cells :=
+  fun ⟨trace, initial, cells, premises, _⟩ => ⟨trace, initial, cells, claim trace initial cells premises⟩
+
+theorem CSRRowSoundnessClaim.applied (claim : CSRRowSoundnessClaim) : CSRRowSoundnessSatisfiableClaim →
+    ∃ (w : Nat → F) (before after : RV.State) (read : Bool),
+      StepResult w before { after with input := before.input.drop read.toNat } :=
+  fun ⟨cells, epoch, w, before, after, read, premises, _⟩ =>
+    ⟨w, before, after, read, claim cells epoch w before after read premises⟩
+
+theorem PaddedTraceSoundnessClaim.applied (claim : PaddedTraceSoundnessClaim) : PaddedTraceSoundnessSatisfiableClaim →
+    ∃ trace initial cells, TraceResult (PaddingBoundary.active trace) initial cells :=
+  fun ⟨trace, initial, cells, premises, _⟩ => ⟨trace, initial, cells, claim trace initial cells premises⟩
+
+end Airbender.UnifiedReduced.Proth120
+
+namespace Airbender.UnifiedReduced.Modular
+
+theorem BabyBearResultClaim.applied (claim : BabyBearResultClaim) : BabyBearResultSatisfiableClaim →
+    ∃ (w : Nat → ZMod babyBearModulus) (op : AddSub.Modular.Opcode), (wordAt w 50).toBitVec =
+      RV.mopVal op.rvOp (wordAt w 36).toBitVec (wordAt w 42).toBitVec (wordAt w 48).toBitVec :=
+  fun ⟨setup, w, op, holds, selected, a, b, c, _⟩ => ⟨w, op, claim setup w op holds selected a b c⟩
+
+end Airbender.UnifiedReduced.Modular

@@ -40,8 +40,8 @@ theorem decode_satisfiable : DecodeSatisfiableClaim :=
 private theorem signedCoefficient_mod (c : Coefficient) :
     Artifact.signedCoefficient c % (babyBearModulus : Int) = c.canonical.val := by
   have hb := c.canonical.isLt
-  unfold Artifact.signedCoefficient
-  dsimp only
+  change (if c.canonical.val ≤ babyBearModulus / 2 then (c.canonical.val : Int)
+    else (c.canonical.val : Int) - babyBearModulus) % babyBearModulus = _
   split
   · exact Int.emod_eq_of_lt (by omega) (by exact_mod_cast hb)
   · rw [Int.sub_emod, Int.emod_self, sub_zero, Int.emod_emod]

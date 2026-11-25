@@ -7,9 +7,13 @@ public import Proven.UnifiedReduced
 public import Proven.UnifiedReduced.ControlKey
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs
+namespace Airbender.UnifiedReduced.Standard.Proofs
+variable {profile : Profile}
 open Arithmetic Verification
 set_option warningAsError true
 set_option maxRecDepth 16384
@@ -31,7 +35,7 @@ def controlAssignment (w : Nat → ZMod p) (i : Nat) : ZMod p :=
 
 theorem control_assertions [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (jumps : w 21 = 0 ∧ w 22 = 0) (selected : w 23 + w 24 = 1)
     (discarded : w 24 * (1 - w 25) = 0) :
     ∀ i : Fin 26, ((FlatOperation.constraints (JumpBranchSlt.importedConstraints (p := p))).get i).eval
@@ -87,4 +91,6 @@ theorem control_assertions [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
   · have flag := local_flags holds 22; change w 54 = 0 ∨ w 54 = 1 at flag; rcases flag with bit | bit <;> simp [bit]
   · have flag := local_flags holds 23; change w 55 = 0 ∨ w 55 = 1 at flag; rcases flag with bit | bit <;> simp [bit]
 
-end Airbender.UnifiedReduced.Proofs
+babybear_instances controlAssignment, control_assertions
+
+end Airbender.UnifiedReduced.Standard.Proofs

@@ -1,6 +1,7 @@
 module
 public import Human.Compiler.WorkerPublicSetup
 public import Human.Import.Coefficients
+public import Proven.CircuitField
 public import Proven.Compiler.NativeBridge
 public import Proven.Compiler.Lookups.Membership
 public import Proven.Compiler.LookupWitness
@@ -12,13 +13,8 @@ set_option warningAsError true
 
 /-- Native and reviewed expressions use the same decoded Montgomery coefficient. -/
 theorem coefficient_value (value : Coefficient) :
-    coefficient value = (Artifact.signedCoefficient value : F) := by
-  have canonical : (value.canonical.val : F) = coefficient value := by
-    simp [Coefficient.canonical, Fp.ofNat, coefficient]
-  dsimp only [Artifact.signedCoefficient]
-  split_ifs
-  · simpa only [Int.cast_natCast] using canonical.symm
-  · simpa only [Int.cast_sub, Int.cast_natCast, ZMod.natCast_self, sub_zero] using canonical.symm
+    coefficient value = (Artifact.signedCoefficient value : F) :=
+  (CircuitField.signedScalar_cast (p := babyBearModulus) value.raw.val).symm
 
 /-- A checked entry lookup gives the logical value at its actual physical placement. -/
 theorem placed {circuit : Circuit} {physical : GKRAddress → F} {logical : Nat → F}

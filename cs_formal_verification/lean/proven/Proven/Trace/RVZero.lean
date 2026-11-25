@@ -50,8 +50,8 @@ private theorem rv_initial_zero_value {p : Nat} {before : RV.State} {cells : Lis
   rfl
 
 /-- Public RV initialization and actual prior-write matching root all x0 reads. -/
-theorem rv_zero_reads_of_preserving [Fact p.Prime] [ClockLaws Kind p]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem rv_zero_reads_of_preserving [Fact p.Prime] {coefficient : ZMod p} [ClockLawsFor Kind p coefficient]
+    (hp : 2 * timestampBase + 4 < p) (inverse : coefficient * 524288 = 1)
     {trace : Data p Kind} (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : RV.State} {cells : List Cell}
     (image : initialImageRV before cells = some trace.initialMemory)
@@ -79,8 +79,8 @@ theorem rv_zero_reads_of_preserving [Fact p.Prime] [ClockLaws Kind p]
   intro row member port present
   exact propagated _ row member port present rfl
 
-theorem rv_zero_writes_of_preserving [Fact p.Prime] [ClockLaws Kind p]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem rv_zero_writes_of_preserving [Fact p.Prime] {coefficient : ZMod p} [ClockLawsFor Kind p coefficient]
+    (hp : 2 * timestampBase + 4 < p) (inverse : coefficient * 524288 = 1)
     {trace : Data p Kind} (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : RV.State} {cells : List Cell}
     (image : initialImageRV before cells = some trace.initialMemory)

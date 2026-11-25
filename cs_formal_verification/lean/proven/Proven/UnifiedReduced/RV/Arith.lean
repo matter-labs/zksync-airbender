@@ -1,11 +1,15 @@
 module
 public import Proven.UnifiedReduced.RV.Step
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
 /-! ADD/SUB/ADDI/LUI/AUIPC and TRIADD rows (decoder bits 0–9) on the RV route. -/
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
@@ -14,7 +18,7 @@ set_option maxRecDepth 16384
     and PC successor. -/
 theorem family_one {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → BitVec 32} {cells : List Cell}
     {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry} {i : RV.Instr}
-    (facts : RowFacts words cells epoch w s after entry i) (small : entry.data.mask < 1024) :
+    (facts : RowFacts profile words cells epoch w s after entry i) (small : entry.data.mask < 1024) :
     (∀ k : Fin 10, w (11 + k.val) = if entry.data.mask.testBit k.val then 1 else 0) ∧
     s.getReg entry.data.rs1 = (Word.mk (w 36).val (w 37).val).toBitVec ∧
     s.getReg entry.data.rs2 = (Word.mk (w 42).val (w 43).val).toBitVec ∧
@@ -42,7 +46,7 @@ private theorem zero_word {p : Nat} [Fact p.Prime] {a b : ZMod p} {s : RV.State}
 /-- ADD, SUB, ADDI, LUI and AUIPC rows. -/
 theorem arith_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → BitVec 32} {cells : List Cell}
     {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry} {i : RV.Instr}
-    (facts : RowFacts words cells epoch w s after entry i) (word : rvWordFields i = some entry.data)
+    (facts : RowFacts profile words cells epoch w s after entry i) (word : rvWordFields i = some entry.data)
     (small : entry.data.mask < 1024) : RowStep w s after i := by
   have hp' : 196608 < p := by omega
   obtain ⟨flags, left, right, _, write, pc⟩ := family_one hp facts small
@@ -153,7 +157,7 @@ theorem arith_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat �
 theorem triadd_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → BitVec 32} {cells : List Cell}
     {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry}
     {rd rs1 rs2 : RV.Reg}
-    (facts : RowFacts words cells epoch w s after entry (.mop .triAdd rd rs1 rs2))
+    (facts : RowFacts profile words cells epoch w s after entry (.mop .triAdd rd rs1 rs2))
     (data : entry.data = ⟨.machine, rs1, rs2, rd, ⟨0, 0⟩, 512, 0⟩) :
     RowStep w s after (.mop .triAdd rd rs1 rs2) := by
   have mask : entry.data.mask = 512 := by rw [data]
@@ -174,4 +178,6 @@ theorem triadd_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat �
   rw [result]
   exact rv_register_next write pc
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances family_one, arith_step, triadd_step
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

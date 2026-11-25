@@ -194,7 +194,7 @@ def ramOutputs (circuit : Circuit) : List GKRAddress :=
     | _ => false).flatMap fun entry => entry.2.toList
 
 /-- The native PC-state tuple: address space two, the PC limbs as data and the raw timestamp. -/
-def stateToken (state : PCState.State babyBearModulus) : Trace.MemoryToken babyBearModulus :=
+def stateToken {p : Nat} (state : PCState.State p) : Trace.MemoryToken p :=
   ⟨Nat.pair 2 (Nat.pair 0 0), state.timestamp, Nat.pair state.pc.1.val state.pc.2.val⟩
 
 /-- A CPU row reads every port token and its starting PC-state token. -/

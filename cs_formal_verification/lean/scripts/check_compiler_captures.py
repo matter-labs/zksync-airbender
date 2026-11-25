@@ -76,6 +76,10 @@ def check_setup_circuits():
 def check_cached_layouts():
     checked = set()
     for path in imported_paths():
+        # The wrap compiler emits one cached layout. Its source and native projections
+        # are checked against the same content pin by the Proth120 artifact library.
+        if path.name == 'unified_reduced_machine_layout_gkr_proth120.json':
+            continue
         name = path.name.replace('_layout_no_caches_gkr.json', '')
         name = name.replace('_layout_gkr.json', '')
         if name in checked:

@@ -58,8 +58,8 @@ theorem write_rules_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
 /-- Shared time induction derives read bounds from public seeds and proved
     local write preservation. Every dependency precedes the current read. -/
 theorem read_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (hp : 2 * timestampBase + 4 < p)
+    (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded)
     (rules : WriteBoundsFromReads trace) :
@@ -82,8 +82,8 @@ theorem read_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
   exact bounded _ row member port portMember rfl
 
 theorem write_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (hp : 2 * timestampBase + 4 < p)
+    (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded)
     (rules : WriteBoundsFromReads trace) :
@@ -94,8 +94,8 @@ theorem write_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
     read_bounds_of_rules hp inverse accepted clocks initial rules row member read readMember)
 
 theorem terminal_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (hp : 2 * timestampBase + 4 < p)
+    (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded)
     (rules : WriteBoundsFromReads trace) :
@@ -111,16 +111,16 @@ theorem terminal_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prim
 
 -- Compatibility with existing family proofs; the induction above is shared.
 theorem read_bounds_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (hp : 2 * timestampBase + 4 < p)
+    (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded) (sources : WriteSources trace) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded :=
   read_bounds_of_rules hp inverse accepted clocks initial (write_rules_of_sources sources)
 
 theorem terminal_bounds_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (hp : 2 * timestampBase + 4 < p)
+    (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded) (sources : WriteSources trace) :
     ∀ token ∈ trace.terminalMemory, token.word.Bounded :=

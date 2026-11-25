@@ -75,7 +75,7 @@ theorem below_epoch [Fact p.Prime] {trace : Data p Kind} {source : MemoryToken p
   omega
 
 private theorem event_times [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     trace.nativeEvents.map Prod.fst = trace.accessTimes.map (trace.memoryEpoch + ·) := by
   simp only [MemoryAccess, Data.nativeEvents, Data.memorySteps, List.map_flatMap,
@@ -93,7 +93,7 @@ private theorem event_times [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact congrArg (trace.memoryEpoch + ·) canonical
 
 theorem memory_event_times_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     (trace.memoryEvents.map Prod.fst).Nodup := by
@@ -156,7 +156,7 @@ private theorem retime_cell [Fact p.Prime] {trace : Data p Kind} {source : Memor
   simpa [retime, clock, transferEvent, List.map_map, Function.comp_def] using mapped
 
 theorem native_memory_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∃ history, MemoryHistory trace history := by

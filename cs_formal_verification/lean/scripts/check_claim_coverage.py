@@ -67,7 +67,15 @@ partial def openWitness {α : Type} (expression : Lean.Expr) (binders : Array (L
   | _ => continuation binders (conjuncts.push expression)
 
 /-- Soundness templates whose definitions state premises. The audit unfolds them in a claim conclusion. -/
-def premiseTemplates : List Name := [`Airbender.Properties.Soundness, `Airbender.Verification.CircuitModel.SoundnessUnder]
+def premiseTemplates : List Name := [
+  `Airbender.Properties.Soundness, `Airbender.Verification.CircuitModel.SoundnessUnder,
+  `Airbender.UnifiedReduced.Modular.ResultSoundness, `Airbender.UnifiedReduced.Modular.RowProperty]
+
+/-- Expose the existential before checking a specialized row witness against its concrete layout. -/
+def witnessStatement (value : Lean.Expr) : MetaM Lean.Expr := do
+  if value.getAppFn.isConstOf `Airbender.UnifiedReduced.Modular.RowSatisfiable then
+    return (← unfoldDefinition? value).getD value
+  return value
 
 /-- Unfold the premise templates at the conclusion of a statement. -/
 partial def unfoldTemplates (statement : Lean.Expr) : MetaM Lean.Expr :=
@@ -105,7 +113,7 @@ def witnessInstance (claim witness : Name) : MetaM (Except String (Array (Option
       if !declaration.binderInfo.isInstImplicit && (← isProp declaration.type) then last := index + 1
     return last
   if premiseEnd == 0 then return .error "no premises"
-  openWitness witnessInfo.value #[] #[] fun witnessBinders conjuncts => do
+  openWitness (← witnessStatement witnessInfo.value) #[] #[] fun witnessBinders conjuncts => do
     -- The claim metavariables live in the context of the witness binders, so that they can take them as values.
     let (claimBinders, binderInfos, _) ← forallMetaBoundedTelescope statement premiseEnd
     let mut position := 0
@@ -285,6 +293,7 @@ EXCEPTIONS = {
         'Airbender.ShiftBinop.ArtifactImportClaim',
         'Airbender.SubwordMemory.ArtifactImportClaim',
         'Airbender.UnifiedReduced.ArtifactImportClaim',
+        'Airbender.UnifiedReduced.Proth120.ArtifactImportClaim',
         'Airbender.WordMemory.ArtifactImportClaim',
         'Airbender.Bigint.SetupImportClaim',
         'Airbender.Blake2G.Control.SetupImportClaim',
@@ -358,7 +367,7 @@ run_cmd do
           match env.find? name with
           | some (.defnInfo info) =>
             if mod.toString.startsWith "Human." && info.type.consumeMData == .sort .zero then
-              let value := info.value.consumeMData
+              let value ← liftTermElabM <| ClaimCoverageAudit.witnessStatement info.value.consumeMData
               let head := if value.isForall then "forall" else
                 if value.isAppOfArity ``Exists 2 then "exists" else "constant"
               let combined := if value.isAppOfArity ``And 2 then

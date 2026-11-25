@@ -3,16 +3,20 @@ public import Proven.UnifiedReduced.RV.ControlLookups
 public import Proven.UnifiedReduced
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 theorem control_lookup_values [Fact p.Prime] (hp : 4194304 ≤ p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 21 + w 22 + w 23 + w 24 = 1)
     (binary : w 26 = 0 ∧ w 27 = 0) (rom : w 81 = 0) :
     w 57 = (if (w 74 + w 75).val = 0 then 1 else 0) ∧
@@ -76,4 +80,6 @@ theorem control_lookup_values [Fact p.Prime] (hp : 4194304 ≤ p)
     And.intro zero.2 (And.intro signA.2 (And.intro signB.2
       (And.intro condition.1 (And.intro condition.2 (And.intro cleanup.2.1 cleanup.2.2)))))
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances control_lookup_values
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

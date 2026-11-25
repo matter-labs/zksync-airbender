@@ -1,5 +1,6 @@
 module
 public import Proven.UnifiedReduced
+public import Proven.UnifiedReduced.Modular.Soundness
 public import Proven.Arithmetic.Lemmas
 public import Human.Circuits.AddSub.Modular.Model
 
@@ -35,11 +36,7 @@ theorem canonical_output {setup : Table (ZMod babyBearModulus) (fields 10)}
   simp [Expression.eval,
     Verification.environment, s11, s12, s13, s20, selected] at borrow low high
   have b : w 52 = 1 := by linear_combination -borrow
-  have boolean : w 53 * (w 53 - 1) = 0 := by
-    rcases UnifiedReduced.Proofs.local_flags h 21 with zero | one
-    · simp only [show w 53 = 0 from zero, zero_mul]
-    · simp only [show w 53 = 1 from one, sub_self, mul_zero]
-  obtain ⟨c, cb, hc⟩ := boolean_nat boolean
+  have bit : (w 53).val ≤ 1 := boolean_val (UnifiedReduced.Proofs.local_flags h 21)
   have rlo := Verification.range16_bound (Verification.lookup_of_holds h
     ⟨0, by rw [UnifiedReduced.lookup_count]; decide⟩)
   have rhi := Verification.range16_bound (Verification.lookup_of_holds h
@@ -49,18 +46,10 @@ theorem canonical_output {setup : Table (ZMod babyBearModulus) (fields 10)}
   have ohi := Verification.range16_bound (Verification.lookup_of_holds h
     ⟨3, by rw [UnifiedReduced.lookup_count]; decide⟩)
   simp [Expression.eval, Verification.environment] at rlo rhi olo ohi
-  have lowEq : (((w 74).val : Nat) : ZMod babyBearModulus) + 1 =
-      (w 50).val + 65536 * c := by
-    simp only [ZMod.natCast_zmod_val]
-    rw [hc] at low
-    linear_combination low
-  have highEq : (c : ZMod babyBearModulus) + (w 75).val + 30720 = (w 51).val + 65536 := by
-    simp only [ZMod.natCast_zmod_val]
-    rw [hc, b] at high
+  apply canonical_of_comparison (w := w) ⟨olo, ohi⟩ ⟨rlo, rhi⟩ bit
+  · linear_combination low
+  · rw [b] at high
     linear_combination high
-  exact (Word.borrow_iff (p := babyBearModulus) (left := ⟨(w 50).val, (w 51).val⟩)
-    (right := ⟨1, 30720⟩) (remainder := ⟨(w 74).val, (w 75).val⟩)
-    (by decide) ⟨olo, ohi⟩ ⟨by decide, by decide⟩ ⟨rlo, rhi⟩ cb (borrow := 1) (by decide)
-    (by simpa using lowEq) (by simpa using highEq)).mp rfl
+
 
 end Airbender.UnifiedReduced.Modular.Proofs

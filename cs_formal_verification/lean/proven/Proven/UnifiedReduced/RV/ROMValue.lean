@@ -4,20 +4,25 @@ public import Proven.UnifiedReduced.RV.ROMLookups
 public import Proven.CleanCore.Circuit.Operations
 public import Proven.Defs.Circuits.UnifiedReduced.Artifact
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Trace
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 theorem word_rom_value [Fact p.Prime] (hp : 4194304 ≤ p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (active : w 4 = 1) (load : w 28 = 1) (rom : w 54 = 1) :
-    (w 39).val < 64 ∧ ((w 38).val + 65536 * (w 39).val) % 4 = 0 ∧
+    (w 39).val < profile.romLimbs ∧ ((w 38).val + 65536 * (w 39).val) % 4 = 0 ∧
       (Word.mk (w 50).val (w 51).val).toBitVec =
         words (((w 38).val + 65536 * (w 39).val) / 4) := by
+  have limbsBound : profile.romLimbs ≤ 64 := by cases profile <;> decide
   have excluded := dispatch_exclusive (by omega) holds active 16 load
   have store : w 29 = 0 := excluded 17 (by decide)
   have other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0 :=
@@ -45,8 +50,8 @@ theorem word_rom_value [Fact p.Prime] (hp : 4194304 ≤ p)
   have addressLow : w 57 = w 38 := by linear_combination low
   have addressHigh : w 58 = w 39 := by linear_combination high
   have classify := (word_rom_selection (by omega) false holds load store).1
-  change w 54 = (if (w 39).val < 64 then 1 else 0) at classify
-  have inside : (w 39).val < 64 := by
+  change w 54 = (if (w 39).val < profile.romLimbs then 1 else 0) at classify
+  have inside : (w 39).val < profile.romLimbs := by
     by_contra outside
     rw [ite_eq_right outside, rom] at classify
     exact one_ne_zero classify
@@ -68,4 +73,6 @@ theorem word_rom_value [Fact p.Prime] (hp : 4194304 ≤ p)
     simpa [Expression.eval, Verification.environment, resultLow, resultHigh] using And.intro result.2.1 result.2.2.1
   exact ⟨inside, packed ▸ result⟩
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances word_rom_value
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

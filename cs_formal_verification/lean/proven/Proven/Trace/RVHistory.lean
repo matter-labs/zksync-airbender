@@ -267,7 +267,7 @@ theorem rv_realize_history {cells : List Cell} (events : List MemoryAccess)
 
 /-- Native RV cell reads: every event of an initialized RV history addresses a public cell. -/
 theorem rv_initialized_cells {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : RV.State} {cells : List Cell}
     (image : initialImageRV before cells = some trace.initialMemory) :
@@ -280,7 +280,7 @@ theorem rv_initialized_cells {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact 
   exact ⟨cell, belongs, equal.symm⟩
 
 theorem rv_native_event_cells {Kind : Type} [CircuitLayout Kind] [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : RV.State} {cells : List Cell} (image : initialImageRV before cells = some trace.initialMemory) :
     ∀ event ∈ trace.nativeEvents, ∃ cell ∈ cells, cell.addressCode = event.2.1 := by
@@ -299,7 +299,7 @@ theorem rv_native_event_cells {Kind : Type} [CircuitLayout Kind] [Fact p.Prime] 
 /-- Realize the accepted native transfers as an RV history. The x0 law is an explicit hypothesis (discharged
     elsewhere, by the decoder). No read value is assumed. -/
 theorem rv_native_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : RV.State} {cells : List Cell} (image : initialImageRV before cells = some trace.initialMemory)
     (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
@@ -328,8 +328,8 @@ theorem rv_native_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime] (hp 
 
 /-- The RV native history in instruction order: rows in descending clock, with the same per-row events. -/
 theorem rv_native_row_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) [ClockLaws Kind p]
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    (hp : 2 * timestampBase + 4 < p) {coefficient : ZMod p} [ClockLawsFor Kind p coefficient]
+    (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : RV.State} {cells : List Cell}
     (image : initialImageRV before cells = some trace.initialMemory)

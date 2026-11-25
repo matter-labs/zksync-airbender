@@ -16,6 +16,8 @@ Cached CPU and worker certificates supply the native machine targets. Each certi
 binds native gates, placement and exact lookup arguments. Only the constraint-description
 targets retain `WorkersAccepted`.
 
+The Proth120 L1 wrap uses the cached unified reduced circuit, a 512 KiB ROM and 2²¹ rows. It shares a field-parametric unified instruction proof with BabyBear. Each layout supplies its imported equations and ROM geometry. The modular instructions operate on the guest BabyBear field in both cases. The [wrap review guide](lean/human/Human/Circuits/UnifiedReduced/README.md#proth120-l1-wrap) identifies the physical-row and execution claims.
+
 **Check everything:** `./verify.sh` (prepares the pinned Clean, builds the spec and all proofs, checks that the spec
 does not import the proofs, runs the regressions and the axiom audits, checks every module's [build budget](#build-budget),
 checks that our code builds [without warnings](#no-warnings), checks the review guides).

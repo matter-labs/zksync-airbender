@@ -5,16 +5,20 @@ public import Proven.Trace.BytePorts
 public import Proven.Arithmetic.SignExtend
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 theorem binary_sign_byte [Fact p.Prime] (hp : 256 < p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (load : w 28 = 0) :
     (w 9).val < 256 ∧ (w 57).val = if (w 9).val < 128 then 0 else 255 := by
@@ -38,26 +42,26 @@ theorem binary_sign_byte [Fact p.Prime] (hp : 256 < p)
   simpa [Expression.eval, Verification.environment, key, value] using sign
 
 theorem binary_left_bytes [Fact p.Prime] (hp : 65536 < p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1) {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (inverse : 256 * (profile.byteInv : ZMod p) = 1) {words : Nat → BitVec 32} {w : Nat → ZMod p}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (tag : Nat) (valid : tag = 4 ∨ tag = 6 ∨ tag = 7) (funct3 : w 10 = (Setup.binaryTag tag : ZMod p)) :
-    ∀ i : Fin 4, leftByte w i =
+    ∀ i : Fin 4, leftByte (profile := profile) w i =
       (((Word.mk (w 36).val (w 37).val).toBitVec.extractLsb' (8 * i.val) 8).toNat : ZMod p) := by
   have values := binary_query_values (by omega : 256 < p) holds selected other tag valid funct3
-  exact Word.byte_fields hp (w 36) (w 37) (leftByte w) (fun i => (values i).1)
-    (by change w 74 + 256 * (-7864320 * (w 36 - w 74)) = w 36
+  exact Word.byte_fields hp (w 36) (w 37) (leftByte (profile := profile) w) (fun i => (values i).1)
+    (by change w 74 + 256 * (profile.byteInv * (w 36 - w 74)) = w 36
         linear_combination (w 36 - w 74) * inverse)
-    (by change w 75 + 256 * (-7864320 * (w 37 - w 75)) = w 37
+    (by change w 75 + 256 * (profile.byteInv * (w 37 - w 75)) = w 37
         linear_combination (w 37 - w 75) * inverse)
 
 theorem binary_register_bytes [Fact p.Prime] (hp : 65536 < p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1) {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (inverse : 256 * (profile.byteInv : ZMod p) = 1) {words : Nat → BitVec 32} {w : Nat → ZMod p}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (load : w 28 = 0) (immediate : w 8 = 0 ∧ w 9 = 0)
     (tag : Nat) (valid : tag = 4 ∨ tag = 6 ∨ tag = 7) (funct3 : w 10 = (Setup.binaryTag tag : ZMod p)) :
-    ∀ i : Fin 4, rightByte w i + immediateByte w i =
+    ∀ i : Fin 4, rightByte (profile := profile) w i + immediateByte w i =
       (((Word.mk (w 42).val (w 43).val).toBitVec.extractLsb' (8 * i.val) 8).toNat : ZMod p) := by
   have sign : w 57 = 0 := by
     apply ZMod.val_injective
@@ -65,28 +69,28 @@ theorem binary_register_bytes [Fact p.Prime] (hp : 65536 < p)
   have zero (i : Fin 4) : immediateByte w i = 0 := by
     fin_cases i <;> simp [immediateByte, immediate.1, immediate.2, sign]
   have values := binary_query_values (by omega : 256 < p) holds selected other tag valid funct3
-  have rightBound (i : Fin 4) : (rightByte w i).val < 256 := by
+  have rightBound (i : Fin 4) : (rightByte (profile := profile) w i).val < 256 := by
     simpa only [zero, add_zero] using (values i).2.1
-  have bytes := Word.byte_fields hp (w 42) (w 43) (rightByte w) rightBound
-    (by change w 76 + 256 * (-7864320 * (w 42 - w 76)) = w 42
+  have bytes := Word.byte_fields hp (w 42) (w 43) (rightByte (profile := profile) w) rightBound
+    (by change w 76 + 256 * (profile.byteInv * (w 42 - w 76)) = w 42
         linear_combination (w 42 - w 76) * inverse)
-    (by change w 77 + 256 * (-7864320 * (w 43 - w 77)) = w 43
+    (by change w 77 + 256 * (profile.byteInv * (w 43 - w 77)) = w 43
         linear_combination (w 43 - w 77) * inverse)
   simpa only [zero, add_zero] using bytes
 
 theorem binary_immediate_bytes [Fact p.Prime] (hp : 65536 < p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1) {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (inverse : 256 * (profile.byteInv : ZMod p) = 1) {words : Nat → BitVec 32} {w : Nat → ZMod p}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (load : w 28 = 0) (imm : BitVec 12)
     (immediate : w 8 = ((imm.signExtend 32).extractLsb' 0 8).toNat ∧
       w 9 = ((imm.signExtend 32).extractLsb' 8 8).toNat)
     (zeroRead : w 42 = 0 ∧ w 43 = 0)
     (tag : Nat) (valid : tag = 4 ∨ tag = 6 ∨ tag = 7) (funct3 : w 10 = (Setup.binaryTag tag : ZMod p)) :
-    ∀ i : Fin 4, rightByte w i + immediateByte w i =
+    ∀ i : Fin 4, rightByte (profile := profile) w i + immediateByte w i =
       (((imm.signExtend 32).extractLsb' (8 * i.val) 8).toNat : ZMod p) := by
   let x := imm.signExtend 32
-  let byte (i : Fin 4) := rightByte w i + immediateByte w i
+  let byte (i : Fin 4) := rightByte (profile := profile) w i + immediateByte w i
   let target (i : Fin 4) : ZMod p := (x.extractLsb' (8 * i.val) 8).toNat
   have small (i : Fin 4) : (byte i).val < 256 :=
     (binary_query_values (by omega) holds selected other tag valid funct3 i).2.1
@@ -105,17 +109,19 @@ theorem binary_immediate_bytes [Fact p.Prime] (hp : 65536 < p)
   have low := Trace.Proofs.packed_bytes_unique (by omega) (small 0) (small 1) (targetSmall 0) (targetSmall 1)
     (show byte 0 + 256 * byte 1 = target 0 + 256 * target 1 by
       rw [show target 0 = w 8 from immediate.1.symm, show target 1 = w 9 from immediate.2.symm]
-      change w 76 + w 8 + 256 * (-7864320 * (w 42 - w 76) + w 9) = w 8 + 256 * w 9
+      change w 76 + w 8 + 256 * (profile.byteInv * (w 42 - w 76) + w 9) = w 8 + 256 * w 9
       rw [zeroRead.1]
       linear_combination -w 76 * inverse)
   have high := Trace.Proofs.packed_bytes_unique (by omega) (small 2) (small 3) (targetSmall 2) (targetSmall 3)
     (show byte 2 + 256 * byte 3 = target 2 + 256 * target 3 by
       rw [show target 2 = w 57 from (upper 0).symm, show target 3 = w 57 from (upper 1).symm]
-      change w 77 + w 57 + 256 * (-7864320 * (w 43 - w 77) + w 57) = w 57 + 256 * w 57
+      change w 77 + w 57 + 256 * (profile.byteInv * (w 43 - w 77) + w 57) = w 57 + 256 * w 57
       rw [zeroRead.2]
       linear_combination -w 77 * inverse)
   intro i
   fin_cases i
   all_goals first | exact low.1 | exact low.2 | exact high.1 | exact high.2
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances binary_sign_byte, binary_left_bytes, binary_register_bytes, binary_immediate_bytes
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

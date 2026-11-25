@@ -33,7 +33,7 @@ theorem last_write_max (history : MemoryAccessList)
           (fun other present => latest other (List.mem_cons_of_mem _ present))
 
 private theorem terminal_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup)
     {sink : MemoryToken p} (member : sink ∈ trace.terminalMemory) :
@@ -54,7 +54,7 @@ private theorem terminal_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 /-- The final native token is the last write in Clean's complete history.
     This follows from native matching and strict chronology, not a result premise. -/
 theorem terminal_latest_value [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup)
     {history : TimestampSortedMemoryAccessList} (bound : MemoryHistory trace history)

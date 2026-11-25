@@ -133,6 +133,13 @@ globs = [
   "Human.Circuits.SubwordMemory.RVDecoder",
   "Human.Circuits.SubwordMemory.RVModel",
   "Human.Circuits.SubwordMemory.RVTheorems",
+  "Human.Circuits.UnifiedReduced.Proth120Clock",
+  "Human.Circuits.UnifiedReduced.Proth120Execution",
+  "Human.Circuits.UnifiedReduced.Proth120NativeStep",
+  "Human.Circuits.UnifiedReduced.Proth120Input",
+  "Human.Circuits.UnifiedReduced.Proth120Windows",
+  "Human.Circuits.UnifiedReduced.Proth120Modular",
+  "Human.Circuits.UnifiedReduced.Modular",
   "Human.Circuits.UnifiedReduced.Decoder",
   "Human.Circuits.UnifiedReduced.Delegation",
   "Human.Circuits.UnifiedReduced.Tables.+",
@@ -304,6 +311,19 @@ srcDir = "human"
 roots = ["Human.Circuits.UnifiedReduced.Artifact"]
 globs = ["Human.Circuits.UnifiedReduced.Artifact"]
 needs = ["unifiedReducedJson"]
+
+# Both readers project the same cached Proth120 artifact.
+[[lean_lib]]
+name = "Proth120Artifact"
+srcDir = "human"
+roots = ["Human.Circuits.UnifiedReduced.Proth120Artifact", "Human.Compiler.Proth120Native"]
+globs = ["Human.Circuits.UnifiedReduced.Proth120Artifact", "Human.Compiler.Proth120Native"]
+needs = ["proth120Json"]
+
+[[input_file]]
+name = "proth120Json"
+path = "../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
+text = true
 
 # WordMemory: rebuilt when mem_word_only_layout_no_caches_gkr.json changes
 [[lean_lib]]

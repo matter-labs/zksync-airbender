@@ -196,7 +196,7 @@ local instance : DecidableEq (PCState.State p) := Classical.decEq _
 /-- Instantiate Clean's path theorem with the actual imported state columns.
     Native clock advancement proves acyclicity; no execution order is assumed. -/
 theorem state_path_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (constraints : ∀ row ∈ trace.rows,
       FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints trace.rom))
     (states : (trace.initial :: trace.rows.map Row.finish).Perm
@@ -213,7 +213,7 @@ theorem state_path_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have increases : ∀ edge ∈ steps, rank edge.1 < rank edge.2 := by
     intro edge member
     obtain ⟨row, rowMember, rfl⟩ := List.mem_map.mp member
-    have step := ClockLaws.advance hp inverse trace.rom row (constraints row rowMember) (clocks row rowMember).1
+    have step := ClockLawsFor.advance hp inverse trace.rom row (constraints row rowMember) (clocks row rowMember).1
     change (decodeTimestamp row.assignment row.columns.initialTime).value <
       (decodeTimestamp row.assignment row.columns.finalTime).value
     omega
@@ -225,7 +225,7 @@ theorem state_path_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact ⟨path, head, last, permutation, clocksUnique⟩
 
 theorem native_state_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    {coefficient : ZMod p} [ClockLawsFor Kind p coefficient] (inverse : coefficient * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∃ path, StatePath trace path :=
   state_path_checks hp inverse accepted.constraints accepted.states boundary.initial boundary.aligned

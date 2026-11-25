@@ -9,6 +9,8 @@ public import Proven.Trace.RVProgram
 public import Proven.CleanCore.Circuit.Operations
 public import Proven.Defs.Helpers.Memory.Ports
 
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
 /-! Whole-trace laws of an accepted unified trace on the RV route, from the RV program table: every native write to
@@ -61,10 +63,18 @@ theorem rv_decoder_zero_cases {i : RV.Instr} {d : DecoderData UnifiedFamily}
   · exfalso
     exact rv_custom_rd custom nop zero
 
+end Airbender.UnifiedReduced.Proofs.RV
+
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+open Airbender.UnifiedReduced.Proofs.RV Arithmetic Trace Trace.Proofs
+variable {profile : Profile}
+set_option warningAsError true
+set_option maxRecDepth 16384
+
 /-- RV sibling of `row_zero_preserving`: a row fetched from the RV table never writes a nonzero x0 value. -/
 theorem rv_row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (active : w 4 = 1) {entry : RVProgramEntry} {i : RV.Instr}
     (fields : rvDecoderFields i = some entry.data) (query : decoderQuery w = entry.query) :
     Trace.Proofs.RowZeroPreserving (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) := by
@@ -148,6 +158,15 @@ theorem rv_row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
       rfl
     · have ram : w 29 = 1 := by simpa [store, importedConstraintsDecoderColumns] using flags 18
       exact False.elim (zero_ne_one (noRAM.symm.trans ram))
+
+babybear_instances rv_row_zero_preserving
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV
+
+namespace Airbender.UnifiedReduced.Proofs.RV
+open Arithmetic Trace Trace.Proofs
+set_option warningAsError true
+set_option maxRecDepth 16384
 
 theorem rv_zero_preserving [Fact p.Prime] (hp : 524288 < p) {trace : UnifiedTrace p}
     (accepted : Accepted trace) {initial : RV.State}

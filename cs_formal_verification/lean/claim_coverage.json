@@ -955,6 +955,58 @@
       "witness": "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatisfiableClaim"
     },
     "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatisfiableClaim": {},
-    "Airbender.InitsTeardowns.SharedBytesSatisfiableClaim": {}
+    "Airbender.InitsTeardowns.SharedBytesSatisfiableClaim": {},
+    "Airbender.UnifiedReduced.Proth120.ArtifactImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
+    "Airbender.UnifiedReduced.Proth120.ClockAdvanceClaim": {
+      "witness": "Airbender.UnifiedReduced.Proth120.ClockAdvanceSatisfiableClaim"
+    },
+    "Airbender.UnifiedReduced.Proth120.ClockAdvanceSatisfiableClaim": {},
+    "Airbender.UnifiedReduced.Proth120.ModularResultClaim": {
+      "witness": "Airbender.UnifiedReduced.Proth120.ModularResultSatisfiableClaim"
+    },
+    "Airbender.UnifiedReduced.Proth120.ModularResultSatisfiableClaim": {},
+    "Airbender.UnifiedReduced.Proth120.WindowTokensClaim": {
+      "witness": "Airbender.UnifiedReduced.Proth120.WindowTokensSatisfiableClaim"
+    },
+    "Airbender.UnifiedReduced.Proth120.WindowTokensSatisfiableClaim": {},
+    "Airbender.UnifiedReduced.Proth120.RowSoundnessClaim": {
+      "witness": "Airbender.UnifiedReduced.Proth120.RowSoundnessSatisfiableClaim"
+    },
+    "Airbender.UnifiedReduced.Proth120.RowSoundnessSatisfiableClaim": {},
+    "Airbender.UnifiedReduced.Proth120.NativeArithmeticClaim": {
+      "witness": "Airbender.UnifiedReduced.Proth120.NativeArithmeticSatisfiableClaim"
+    },
+    "Airbender.UnifiedReduced.Proth120.NativeArithmeticSatisfiableClaim": {},
+    "Airbender.UnifiedReduced.Proth120.NativeRowClaim": {
+      "witness": "Airbender.UnifiedReduced.Proth120.NativeRowSatisfiableClaim"
+    },
+    "Airbender.UnifiedReduced.Proth120.NativeRowSatisfiableClaim": {},
+    "Airbender.UnifiedReduced.Proth120.NativeStepSoundnessClaim": {
+      "witness": "Airbender.UnifiedReduced.Proth120.NativeStepSoundnessSatisfiableClaim"
+    },
+    "Airbender.UnifiedReduced.Proth120.NativeStepSoundnessSatisfiableClaim": {},
+    "Airbender.UnifiedReduced.Proth120.TraceSoundnessClaim": {
+      "witness": "Airbender.UnifiedReduced.Proth120.TraceSoundnessSatisfiableClaim"
+    },
+    "Airbender.UnifiedReduced.Proth120.TraceSoundnessSatisfiableClaim": {},
+    "Airbender.UnifiedReduced.Proth120.NativeTraceSoundnessClaim": {
+      "witness": "Airbender.UnifiedReduced.Proth120.NativeTraceSoundnessSatisfiableClaim"
+    },
+    "Airbender.UnifiedReduced.Proth120.NativeTraceSoundnessSatisfiableClaim": {},
+    "Airbender.UnifiedReduced.Proth120.CSRRowSoundnessClaim": {
+      "witness": "Airbender.UnifiedReduced.Proth120.CSRRowSoundnessSatisfiableClaim"
+    },
+    "Airbender.UnifiedReduced.Proth120.CSRRowSoundnessSatisfiableClaim": {},
+    "Airbender.UnifiedReduced.Proth120.PaddedTraceSoundnessClaim": {
+      "witness": "Airbender.UnifiedReduced.Proth120.PaddedTraceSoundnessSatisfiableClaim"
+    },
+    "Airbender.UnifiedReduced.Proth120.PaddedTraceSoundnessSatisfiableClaim": {},
+    "Airbender.UnifiedReduced.Modular.BabyBearResultClaim": {
+      "witness": "Airbender.UnifiedReduced.Modular.BabyBearResultSatisfiableClaim"
+    },
+    "Airbender.UnifiedReduced.Modular.BabyBearResultSatisfiableClaim": {}
   }
 }

@@ -15,20 +15,25 @@ public import Proven.CleanCore.Circuit.Operations
 public import Proven.Defs.Helpers.Memory.Ports
 public import Proven.Defs.Helpers.Memory.RowEvents
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+public import Proven.UnifiedReduced.MemoryMap
+
 @[expose] public section
 
 /-! Row-level facts of one unified row on the RV route: decoder selectors and field bounds of the RV table
     (`rvDecoderFields`), and the row's three ports read against an RV history (`rv_three_ports`): operand registers,
     destination register write, RAM store and RAM load. -/
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 theorem rv_decoder_selectors {p : Nat} [Fact p.Prime] (hp : 524288 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {entry : RVProgramEntry}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (small : entry.data.mask < 524288) (query : decoderQuery w = entry.query) :
     ∀ i : Fin 19, w importedConstraintsDecoderColumns.flags[i] =
       if entry.data.mask.testBit i.val then 1 else 0 := by
@@ -175,7 +180,7 @@ private theorem register_cell {cell : Cell} {index : BitVec 5} {p : Nat} {column
 /-- The operand ports of a row that does not load from RAM read the pre-state registers `rs1` and `rs2`. -/
 theorem rv_register_reads {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {entry : RVProgramEntry}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (noRAM : w 28 = 0) (query : decoderQuery w = entry.query)
     {cells : List Cell} (epoch : Nat) {before after : RV.State}
     (history : RVHistory cells (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after) :
@@ -202,7 +207,7 @@ theorem rv_register_reads {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     port's read value, and the post-state agrees with the pre-state with `rd` set to the written value. -/
 theorem rv_register_write {p : Nat} [Fact p.Prime]
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {rd : BitVec 5}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (noStore : w 29 = 0) (index : (w 7).val = rd.toNat)
     {cells : List Cell} (epoch : Nat) {before after : RV.State}
     (history : RVHistory cells (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after) :
@@ -233,13 +238,13 @@ theorem rv_register_write {p : Nat} [Fact p.Prime]
     it is aligned, and the circuit keeps it out of ROM. -/
 theorem rv_store_write {p : Nat} [Fact p.Prime] (hp : 131072 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (load : w 28 = 0) (store : w 29 = 1)
     {cells : List Cell} (aligned : ∀ cell ∈ cells, cell.Aligned) (epoch : Nat) {before after : RV.State}
     (history : RVHistory cells (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after) :
     (Word.mk (w 44).val (w 45).val).Bounded ∧
       (Word.mk (w 44).val (w 45).val).toBitVec.toNat % 4 = 0 ∧
-      RV.writable (Word.mk (w 44).val (w 45).val).toBitVec 4 ∧
+      RV.writableAt (profile.romLimbs * 65536) (Word.mk (w 44).val (w 45).val).toBitVec 4 ∧
       RV.Same after (before.store (Word.mk (w 44).val (w 45).val).toBitVec
         (Word.mk (w 50).val (w 51).val).toBitVec 4) := by
   obtain ⟨_, _, _, _, c2, m2, _, _, _, _, a2, r2, w2⟩ := rv_row_ports epoch history
@@ -257,9 +262,9 @@ theorem rv_store_write {p : Nat} [Fact p.Prime] (hp : 131072 < p)
       rw [← limbs, Word.ofBitVec_roundtrip]
     rw [same]
     have isAligned : address.toNat % 4 = 0 := aligned _ m2
-    have romHigh : 64 ≤ (Word.ofBitVec address).hi := by rw [limbs]; exact high
-    have writable : RV.writable address 4 := by
-      refine ⟨RVWritable.ram_index_rom_bound address romHigh, ?_⟩
+    have romHigh : profile.romLimbs ≤ (Word.ofBitVec address).hi := by rw [limbs]; exact high
+    have writable : RV.writableAt (profile.romLimbs * 65536) address 4 := by
+      refine ⟨RV.writableAt_index address romHigh, ?_⟩
       have := address.isLt
       unfold RV.RAM_END
       omega
@@ -310,4 +315,8 @@ theorem rv_register_next {before after : RV.State} {rd : RV.Reg} {value final : 
   ⟨by simp [RV.State.nextInstr, RV.State.setReg, pc], fun i => (same.2.1 i).symm, same.2.2.1.symm,
     same.2.2.2.1.symm, same.2.2.2.2.symm⟩
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances rv_decoder_selectors, rv_fields_cases, rv_word_fields_bounds, rv_custom_fields_bounds,
+  rv_field_bounds, rv_row_ports, rv_register_reads, rv_register_write, rv_store_write, rv_load_read,
+  rv_register_next
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

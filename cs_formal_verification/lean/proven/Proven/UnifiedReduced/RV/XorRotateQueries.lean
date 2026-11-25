@@ -3,9 +3,13 @@ public import Proven.UnifiedReduced.RV.Binary
 public import Proven.UnifiedReduced.RV.XorRotateLookups
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Verification
 set_option warningAsError true
 set_option maxRecDepth 16384
@@ -13,12 +17,12 @@ set_option maxHeartbeats 1600000
 
 theorem xorrot_query_values [Fact p.Prime] (hp : 256 < p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (kind : Fin 4) (funct3 : w 10 = (47 + kind.val : Nat)) (i : Fin 4) :
-    (leftByte w i).val < 256 ∧ (rightByte w i + immediateByte w i).val < 256 ∧
+    (leftByte (profile := profile) w i).val < 256 ∧ (rightByte (profile := profile) w i + immediateByte w i).val < 256 ∧
       ∀ byte : Fin 4, w (58 + 4 * i.val + byte.val) =
-        (((BitVec.ofNat 32 ((leftByte w i).val ^^^ (rightByte w i + immediateByte w i).val)).rotateRight
+        (((BitVec.ofNat 32 ((leftByte (profile := profile) w i).val ^^^ (rightByte (profile := profile) w i + immediateByte w i).val)).rotateRight
           (#[16, 12, 8, 7][kind.val]!)).extractLsb' (8 * byte.val) 8).toNat := by
   have wires := binary_wiring holds selected other i
   have query := Verification.lookup_of_holds holds
@@ -46,4 +50,6 @@ theorem xorrot_query_values [Fact p.Prime] (hp : 256 < p)
       all_goals norm_num only at c output ⊢
       all_goals simpa [Expression.eval, Verification.environment, a, b, c] using output
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances xorrot_query_values
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

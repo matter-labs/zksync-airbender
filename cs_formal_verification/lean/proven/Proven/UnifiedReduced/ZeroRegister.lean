@@ -6,16 +6,20 @@ public import Mathlib.Tactic.IntervalCases
 public import Proven.CleanCore.Circuit.Operations
 public import Proven.Defs.Circuits.UnifiedReduced.Artifact
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs
+namespace Airbender.UnifiedReduced.Standard.Proofs
+variable {profile : Profile}
 open Trace Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 theorem zero_operands_result [Fact p.Prime] (hp : 196608 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (active : w 4 = 1) (selected : w 11 = 1)
     (operands : w 36 = 0 ∧ w 37 = 0 ∧ w 42 = 0 ∧ w 43 = 0 ∧ w 8 = 0 ∧ w 9 = 0) :
     (⟨(w 50).val, (w 51).val⟩ : Word).toBitVec = 0 := by
@@ -54,4 +58,6 @@ theorem zero_operands_result [Fact p.Prime] (hp : 196608 < p)
     (destination_bounds h) (Nat.le_trans carry (by decide)) (Nat.le_trans overflow (by decide))
     (by simpa only [Nat.cast_zero] using loEq) (by simpa only [Nat.cast_zero] using hiEq)
 
-end Airbender.UnifiedReduced.Proofs
+babybear_instances zero_operands_result
+
+end Airbender.UnifiedReduced.Standard.Proofs

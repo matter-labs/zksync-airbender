@@ -7,8 +7,8 @@ namespace Airbender.Trace.Proofs
 variable {Kind : Type} [CircuitLayout Kind]
 set_option warningAsError true
 
-theorem state_clock_inputs [Fact p.Prime] [ClockLaws Kind p]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+theorem state_clock_inputs [Fact p.Prime] {coefficient : ZMod p} [ClockLawsFor Kind p coefficient]
+    (hp : 2 * timestampBase + 4 < p) (inverse : coefficient * 524288 = 1)
     {trace : Data p Kind}
     (constraints : ∀ row ∈ trace.rows,
       FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints trace.rom))
@@ -26,12 +26,12 @@ theorem state_clock_inputs [Fact p.Prime] [ClockLaws Kind p]
   have finalBounds : ∀ step ∈ clockSteps trace, step.2.Bounded := by
     intro step member
     obtain ⟨row, present, rfl⟩ := List.mem_map.mp member
-    exact ClockLaws.finalBound trace.rom row (constraints row present)
+    exact ClockLawsFor.finalBound trace.rom row (constraints row present)
   have bounds := incoming_bounds matching initial finalBounds
   have advances : ∀ step ∈ clockSteps trace, step.2.value = step.1.value + 4 := by
     intro step member
     obtain ⟨row, present, rfl⟩ := List.mem_map.mp member
-    exact ClockLaws.advance hp inverse trace.rom row (constraints row present)
+    exact ClockLawsFor.advance hp inverse trace.rom row (constraints row present)
       (bounds _ (List.mem_map.mpr ⟨row, present, rfl⟩))
   have alignments := incoming_alignment matching aligned advances
   intro row present

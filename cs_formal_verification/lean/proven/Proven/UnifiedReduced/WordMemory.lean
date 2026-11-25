@@ -3,16 +3,20 @@ public import Proven.UnifiedReduced
 public import Proven.Lookups
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs
+namespace Airbender.UnifiedReduced.Standard.Proofs
+variable {profile : Profile}
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 theorem word_memory_address [Fact p.Prime] (hp : 196608 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} (store : Bool)
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (selected : w 28 = if store then 0 else 1) (other : w 29 = if store then 1 else 0)
     (sourceBound : (Word.mk (w 36).val (w 37).val).Bounded)
     (immediateBound : (Word.mk (w 8).val (w 9).val).Bounded)
@@ -40,7 +44,7 @@ theorem word_memory_address [Fact p.Prime] (hp : 196608 < p)
 
 theorem word_memory_copy [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p} (store : Bool)
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile setup))
     (selected : w 28 = if store then 0 else 1) (other : w 29 = if store then 1 else 0)
     (ram : w 54 = 0) : w 50 = w 42 ∧ w 51 = w 43 := by
   have gate := Verification.assertion_of_holds holds ⟨39, by rw [constraint_count]; decide⟩
@@ -54,4 +58,6 @@ theorem word_memory_copy [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
   all_goals constructor
   all_goals first | linear_combination low | linear_combination high
 
-end Airbender.UnifiedReduced.Proofs
+babybear_instances word_memory_address, word_memory_copy
+
+end Airbender.UnifiedReduced.Standard.Proofs

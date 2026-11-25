@@ -15,8 +15,10 @@ bit vector, and that bounded words are determined by their numeric value.
 Those facts do not make arbitrary witness limbs bounded: the consuming circuit
 and history claims must establish their ranges.
 
-Read [Field](Field.lean) and [Word](Word.lean) for field operations and the
-two-limb RV32 representation. A represented word is not automatically bounded;
+[CircuitField](CircuitField.lean) gives a compiled circuit its prime modulus, Montgomery radix and inverse,
+limb bound and two-adicity. BabyBear uses a 32-bit radix and Proth120 uses a 128-bit radix. The same
+field operations decode signed coefficients and justify the byte and clock divisions for either host.
+[Word](Word.lean) gives the two-limb RV32 representation. A represented word is not automatically bounded;
 check where the relevant claim proves its canonical range.
 
 [Configuration](Configuration.lean) fixes the Airbender configuration of the Sail

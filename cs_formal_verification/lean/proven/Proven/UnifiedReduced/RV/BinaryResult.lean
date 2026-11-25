@@ -2,20 +2,24 @@ module
 public import Proven.UnifiedReduced.RV.Binary
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Verification
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 theorem binary_destination [Fact p.Prime] (hp : 65536 < p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p} {left right : BitVec 32}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (tag : Nat) (valid : tag = 4 ∨ tag = 6 ∨ tag = 7) (funct3 : w 10 = (Setup.binaryTag tag : ZMod p))
-    (leftBytes : ∀ i : Fin 4, leftByte w i = ((left.extractLsb' (8 * i.val) 8).toNat : ZMod p))
-    (rightBytes : ∀ i : Fin 4, rightByte w i + immediateByte w i =
+    (leftBytes : ∀ i : Fin 4, leftByte (profile := profile) w i = ((left.extractLsb' (8 * i.val) 8).toNat : ZMod p))
+    (rightBytes : ∀ i : Fin 4, rightByte (profile := profile) w i + immediateByte w i =
       ((right.extractLsb' (8 * i.val) 8).toNat : ZMod p)) :
     (Word.mk (w 50).val (w 51).val).toBitVec = byteOperation tag left right := by
   let result := byteOperation tag left right
@@ -67,4 +71,6 @@ theorem binary_destination [Fact p.Prime] (hp : 65536 < p)
     ring
   rw [packed, Nat.mod_eq_of_lt result.isLt]
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances binary_destination
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

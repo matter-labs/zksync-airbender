@@ -5,20 +5,24 @@ public import Proven.Arithmetic.WordRotation
 public import Proven.Arithmetic.ShiftAssembly
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Verification
 set_option warningAsError true
 set_option maxRecDepth 16384
 
 theorem xorrot_destination [Fact p.Prime] (hp : 262144 < p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (kind : Fin 4) (funct3 : w 10 = (47 + kind.val : Nat)) (left right : BitVec 32)
-    (leftBytes : ∀ i : Fin 4, leftByte w i = ((left.extractLsb' (8 * i.val) 8).toNat : ZMod p))
-    (rightBytes : ∀ i : Fin 4, rightByte w i + immediateByte w i = ((right.extractLsb' (8 * i.val) 8).toNat : ZMod p)) :
+    (leftBytes : ∀ i : Fin 4, leftByte (profile := profile) w i = ((left.extractLsb' (8 * i.val) 8).toNat : ZMod p))
+    (rightBytes : ∀ i : Fin 4, rightByte (profile := profile) w i + immediateByte w i = ((right.extractLsb' (8 * i.val) 8).toNat : ZMod p)) :
     (Word.mk (w 50).val (w 51).val).toBitVec = (left ^^^ right).rotateRight #[16, 12, 8, 7][kind.val]! := by
   let parts (i j : Fin 4) := w (58 + 4 * i.val + j.val)
   let target := (left ^^^ right).rotateRight #[16, 12, 8, 7][kind.val]!
@@ -27,7 +31,7 @@ theorem xorrot_destination [Fact p.Prime] (hp : 262144 < p)
       ((rotatedByte32 (left ^^^ right) kind i).extractLsb' (8 * j.val) 8).toNat := by
     change (w (58 + 4 * i.val + j.val)).val = _
     rw [(queries i).2.2 j, ZMod.val_natCast_of_lt (by
-      have := ((BitVec.ofNat 32 ((leftByte w i).val ^^^ (rightByte w i + immediateByte w i).val)).rotateRight
+      have := ((BitVec.ofNat 32 ((leftByte (profile := profile) w i).val ^^^ (rightByte (profile := profile) w i + immediateByte w i).val)).rotateRight
         #[16, 12, 8, 7][kind.val]!).extractLsb' (8 * j.val) 8 |>.isLt
       omega)]
     rw [leftBytes i, rightBytes i, ZMod.val_natCast_of_lt (by have := (left.extractLsb' (8 * i.val) 8).isLt; omega),
@@ -79,15 +83,15 @@ theorem xorrot_destination [Fact p.Prime] (hp : 262144 < p)
   exact Nat.mod_eq_of_lt target.isLt
 
 theorem xorrot_operand_bytes [Fact p.Prime] (hp : 65536 < p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
+    (inverse : 256 * (profile.byteInv : ZMod p) = 1)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
-    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints (Setup.tableWith words)))
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints profile (Setup.tableWith words)))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (kind : Fin 4) (funct3 : w 10 = (47 + kind.val : Nat)) (load : w 28 = 0)
     (immediate : w 8 = 0 ∧ w 9 = 0) :
-    (∀ i : Fin 4, leftByte w i =
+    (∀ i : Fin 4, leftByte (profile := profile) w i =
       (((Word.mk (w 36).val (w 37).val).toBitVec.extractLsb' (8 * i.val) 8).toNat : ZMod p)) ∧
-    (∀ i : Fin 4, rightByte w i + immediateByte w i =
+    (∀ i : Fin 4, rightByte (profile := profile) w i + immediateByte w i =
       (((Word.mk (w 42).val (w 43).val).toBitVec.extractLsb' (8 * i.val) 8).toNat : ZMod p)) := by
   have values := xorrot_query_values (by omega) holds selected other kind funct3
   have sign : w 57 = 0 := by
@@ -96,18 +100,20 @@ theorem xorrot_operand_bytes [Fact p.Prime] (hp : 65536 < p)
   have zero (i : Fin 4) : immediateByte w i = 0 := by
     fin_cases i <;> simp [immediateByte, immediate.1, immediate.2, sign]
   constructor
-  · exact Word.byte_fields hp (w 36) (w 37) (leftByte w) (fun i => (values i).1)
-      (by change w 74 + 256 * (-7864320 * (w 36 - w 74)) = w 36
+  · exact Word.byte_fields hp (w 36) (w 37) (leftByte (profile := profile) w) (fun i => (values i).1)
+      (by change w 74 + 256 * (profile.byteInv * (w 36 - w 74)) = w 36
           linear_combination (w 36 - w 74) * inverse)
-      (by change w 75 + 256 * (-7864320 * (w 37 - w 75)) = w 37
+      (by change w 75 + 256 * (profile.byteInv * (w 37 - w 75)) = w 37
           linear_combination (w 37 - w 75) * inverse)
-  · have rightBound (i : Fin 4) : (rightByte w i).val < 256 := by
+  · have rightBound (i : Fin 4) : (rightByte (profile := profile) w i).val < 256 := by
       simpa only [zero, add_zero] using (values i).2.1
-    have bytes := Word.byte_fields hp (w 42) (w 43) (rightByte w) rightBound
-      (by change w 76 + 256 * (-7864320 * (w 42 - w 76)) = w 42
+    have bytes := Word.byte_fields hp (w 42) (w 43) (rightByte (profile := profile) w) rightBound
+      (by change w 76 + 256 * (profile.byteInv * (w 42 - w 76)) = w 42
           linear_combination (w 42 - w 76) * inverse)
-      (by change w 77 + 256 * (-7864320 * (w 43 - w 77)) = w 43
+      (by change w 77 + 256 * (profile.byteInv * (w 43 - w 77)) = w 43
           linear_combination (w 43 - w 77) * inverse)
     simpa only [zero, add_zero] using bytes
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances xorrot_destination, xorrot_operand_bytes
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

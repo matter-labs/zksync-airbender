@@ -4,11 +4,15 @@ public import Proven.UnifiedReduced.RV.JumpArithmetic
 public import Proven.JumpBranchSlt.RVData
 public import Proven.CleanCore.Circuit.Operations
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
 /-! JAL/JALR rows on the RV route: the unified jump arithmetic (`jump_link`, `jump_pc`) against `RV.exec`. -/
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
@@ -31,7 +35,7 @@ theorem jump_same {s after : RV.State} {rd : RV.Reg} {written link target : RV.W
 /-- Flags and register updates of a jump row with unified mask `1024 * jumpMask`. -/
 private theorem jump_context {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → BitVec 32}
     {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry}
-    {i : RV.Instr} (facts : RowFacts words cells epoch w s after entry i) {rd : RV.Reg} (indirect : Bool)
+    {i : RV.Instr} (facts : RowFacts profile words cells epoch w s after entry i) {rd : RV.Reg} (indirect : Bool)
     (mask : entry.data.mask = 1024 * ((if indirect then 2 else 1) + if rd = 0 then 16 else 0))
     (destination : entry.data.rd = rd) :
     (w 21 = (if indirect then 0 else 1) ∧ w 22 = (if indirect then 1 else 0)) ∧ (w 23 = 0 ∧ w 24 = 0) ∧
@@ -74,7 +78,7 @@ private theorem link_value {p : Nat} [Fact p.Prime] {w : Nat → ZMod p} {rd : R
 theorem jal_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → BitVec 32}
     {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry}
     {rd : RV.Reg} {offset : RV.Word}
-    (facts : RowFacts words cells epoch w s after entry (.jal rd offset))
+    (facts : RowFacts profile words cells epoch w s after entry (.jal rd offset))
     (data : entry.data = jumpFields ⟨(), 0, 0, rd, Word.ofBitVec offset, if rd = 0 then 17 else 1, 0⟩) :
     RowStep w s after (.jal rd offset) := by
   have mask : entry.data.mask = 1024 * ((if false then 2 else 1) + if rd = 0 then 16 else 0) := by
@@ -108,7 +112,7 @@ theorem jal_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → 
 theorem jalr_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → BitVec 32}
     {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry}
     {rd rs1 : RV.Reg} {offset : RV.Word}
-    (facts : RowFacts words cells epoch w s after entry (.jalr rd rs1 offset))
+    (facts : RowFacts profile words cells epoch w s after entry (.jalr rd rs1 offset))
     (data : entry.data = jumpFields ⟨(), rs1, 0, rd, Word.ofBitVec offset, if rd = 0 then 18 else 2, 0⟩) :
     RowStep w s after (.jalr rd rs1 offset) := by
   have mask : entry.data.mask = 1024 * ((if true then 2 else 1) + if rd = 0 then 16 else 0) := by
@@ -139,4 +143,6 @@ theorem jalr_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat →
   rw [← target.1]
   exact jump_same write (link_value marker link)
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances jump_same, jal_step, jalr_step
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

@@ -5,12 +5,16 @@ public import Proven.UnifiedReduced.RV.BinaryOperands
 public import Proven.UnifiedReduced.RV.Shift
 public import Proven.UnifiedReduced.RV.XorRotateArithmetic
 
+public import Proven.UnifiedReduced.Standard.Artifact
+public meta import Proven.UnifiedReduced.Standard.Instances
+
 @[expose] public section
 
 /-! Shift/binary rows (decoder bits 15–16) on the RV route: XOR/OR/AND (register and immediate), SLL/SRL/SRA
     (register and immediate), REV8 and XORROT. -/
 
-namespace Airbender.UnifiedReduced.Proofs.RV
+namespace Airbender.UnifiedReduced.Standard.Proofs.RV
+variable {profile : Profile}
 open Arithmetic Trace Trace.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
@@ -18,7 +22,7 @@ set_option maxRecDepth 16384
 /-- A row on one of the shift/binary bits: selectors, operand and destination registers, PC successor. -/
 theorem family_three {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → BitVec 32} {cells : List Cell}
     {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry} {i : RV.Instr}
-    (facts : RowFacts words cells epoch w s after entry i) {m : Nat} (mask : entry.data.mask = m)
+    (facts : RowFacts profile words cells epoch w s after entry i) {m : Nat} (mask : entry.data.mask = m)
     (shape : m = 32768 ∨ m = 65536) :
     w 26 = (if m = 32768 then 1 else 0) ∧ w 27 = (if m = 32768 then 0 else 1) ∧
     (w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0) ∧ w 28 = 0 ∧
@@ -50,7 +54,7 @@ theorem family_three {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat 
 
 theorem RowFacts.funct3 {p : Nat} [Fact p.Prime] {words : Nat → BitVec 32} {cells : List Cell}
     {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry} {i : RV.Instr}
-    (facts : RowFacts words cells epoch w s after entry i) : w 10 = (entry.data.funct3 : ZMod p) := by
+    (facts : RowFacts profile words cells epoch w s after entry i) : w 10 = (entry.data.funct3 : ZMod p) := by
   have tag := congrArg (fun q : Vector (ZMod p) 9 => q[7]) facts.query
   exact tag
 
@@ -63,10 +67,10 @@ private theorem zero_limbs {p : Nat} [Fact p.Prime] {a b : ZMod p} (bound : (Wor
 
 /-! ### XOR/OR/AND -/
 
-theorem binary_reg_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem binary_reg_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInverse : 256 * (profile.byteInv : ZMod p) = 1)
     {words : Nat → BitVec 32} {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State}
     {entry : RVProgramEntry} {op : RV.Op} {rd rs1 rs2 : RV.Reg} {tag : Nat}
-    (facts : RowFacts words cells epoch w s after entry (.op op rd rs1 rs2))
+    (facts : RowFacts profile words cells epoch w s after entry (.op op rd rs1 rs2))
     (valid : tag = 4 ∨ tag = 6 ∨ tag = 7) (agree : ∀ a b, RV.alu op a b = Verification.byteOperation tag a b)
     (data : entry.data = ⟨.machine, rs1, rs2, rd, ⟨0, 0⟩, 65536, Setup.binaryTag tag⟩) :
     RowStep w s after (.op op rd rs1 rs2) := by
@@ -88,10 +92,10 @@ theorem binary_reg_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInver
   rw [agree, left, right, ← value]
   exact rv_register_next write pc
 
-theorem binary_imm_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem binary_imm_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInverse : 256 * (profile.byteInv : ZMod p) = 1)
     {words : Nat → BitVec 32} {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State}
     {entry : RVProgramEntry} {op : RV.Op} {rd rs1 : RV.Reg} {x : BitVec 12} {tag : Nat}
-    (facts : RowFacts words cells epoch w s after entry (.opImm op rd rs1 (x.signExtend 32)))
+    (facts : RowFacts profile words cells epoch w s after entry (.opImm op rd rs1 (x.signExtend 32)))
     (valid : tag = 4 ∨ tag = 6 ∨ tag = 7) (agree : ∀ a b, RV.alu op a b = Verification.byteOperation tag a b)
     (data : entry.data = ⟨.machine, rs1, 0, rd, ShiftBinop.binaryImmediate (x.signExtend 32), 65536,
       Setup.binaryTag tag⟩) :
@@ -124,10 +128,10 @@ theorem binary_imm_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInver
 /-! ### SLL/SRL/SRA and REV8 -/
 
 private theorem right_low_byte [Fact p.Prime] (hp : 65536 < p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1) {w : Nat → ZMod p}
-    (small : (w 76).val < 256 ∧ (-7864320 * (w 42 - w 76)).val < 256) :
+    (inverse : 256 * (profile.byteInv : ZMod p) = 1) {w : Nat → ZMod p}
+    (small : (w 76).val < 256 ∧ (profile.byteInv * (w 42 - w 76)).val < 256) :
     (w 76).val = ((Word.mk (w 42).val (w 43).val).toBitVec.extractLsb' 0 8).toNat := by
-  have packed := byte_pair_value hp (w 76) (-7864320 * (w 42 - w 76)) (w 42) small.1 small.2
+  have packed := byte_pair_value hp (w 76) (profile.byteInv * (w 42 - w 76)) (w 42) small.1 small.2
     (by linear_combination (w 42 - w 76) * inverse)
   simp only [Word.toBitVec, Word.value, limbBase, BitVec.extractLsb',
     BitVec.toNat_ofNat, Nat.shiftRight_zero]
@@ -137,9 +141,9 @@ private theorem right_low_byte [Fact p.Prime] (hp : 65536 < p)
 
 /-- The shift row's destination is `shiftOperation` of rs1's word by the given amount. -/
 private theorem shift_value {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
-    (byteInverse : 256 * (-7864320 : ZMod p) = 1) {words : Nat → BitVec 32} {cells : List Cell} {epoch : Nat}
+    (byteInverse : 256 * (profile.byteInv : ZMod p) = 1) {words : Nat → BitVec 32} {cells : List Cell} {epoch : Nat}
     {w : Nat → ZMod p} {s after : RV.State} {entry : RVProgramEntry} {i : RV.Instr}
-    (facts : RowFacts words cells epoch w s after entry i) (s26 : w 26 = 1) (s27 : w 27 = 0)
+    (facts : RowFacts profile words cells epoch w s after entry i) (s26 : w 26 = 1) (s27 : w 27 = 0)
     (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0) (tag : Nat)
     (valid : tag = 1 ∨ tag = 2 ∨ tag = 3 ∨ tag = 5) (funct3 : w 10 = (tag : ZMod p)) {n : Nat}
     (amount : (w 57 + w 8).val = n) (reverse : tag = 5 → n = 0) :
@@ -153,10 +157,10 @@ private theorem shift_value {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   rw [code, amount] at result
   exact result
 
-theorem shift_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem shift_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInverse : 256 * (profile.byteInv : ZMod p) = 1)
     {words : Nat → BitVec 32} {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State}
     {entry : RVProgramEntry} {i : RV.Instr} {rd rs1 rs2 : RV.Reg} {imm : Word} {tag : Nat}
-    (facts : RowFacts words cells epoch w s after entry i)
+    (facts : RowFacts profile words cells epoch w s after entry i)
     (valid : tag = 1 ∨ tag = 2 ∨ tag = 3 ∨ tag = 5)
     (data : entry.data = ⟨.machine, rs1, rs2, rd, imm, 32768, tag⟩)
     (form : (rs2 = 0 ∧ imm.hi = 0 ∧ imm.lo < 32) ∨ (imm = ⟨0, 0⟩)) (reverse : tag = 5 → rs2 = 0 ∧ imm = ⟨0, 0⟩)
@@ -183,7 +187,7 @@ theorem shift_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInverse : 
     intro zero
     subst zero
     have zeroRead := zero_limbs facts.rightBound (by rw [← right]; rfl)
-    have packed := byte_pair_value (by omega) (w 76) (-7864320 * (w 42 - w 76)) (w 42) truncated.1 truncated.2.1
+    have packed := byte_pair_value (by omega) (w 76) (profile.byteInv * (w 42 - w 76)) (w 42) truncated.1 truncated.2.1
       (by linear_combination (w 42 - w 76) * byteInverse)
     rw [zeroRead.1, ZMod.val_zero] at packed
     have zero76 : (w 76).val = 0 := by omega
@@ -208,10 +212,10 @@ theorem shift_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInverse : 
 
 /-! ### XORROT -/
 
-theorem xorrot_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+theorem xorrot_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInverse : 256 * (profile.byteInv : ZMod p) = 1)
     {words : Nat → BitVec 32} {cells : List Cell} {epoch : Nat} {w : Nat → ZMod p} {s after : RV.State}
     {entry : RVProgramEntry} {n : BitVec 5} {rd rs1 : RV.Reg} {tag : Nat}
-    (facts : RowFacts words cells epoch w s after entry (.xorRot n rd rs1))
+    (facts : RowFacts profile words cells epoch w s after entry (.xorRot n rd rs1))
     (found : customRotationTag n = some tag)
     (data : entry.data = ⟨.machine, rs1, rd, rd, ⟨0, 0⟩, 65536, tag⟩) :
     RowStep w s after (.xorRot n rd rs1) := by
@@ -242,4 +246,6 @@ theorem xorrot_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (byteInverse :
   rw [result]
   exact rv_register_next write pc
 
-end Airbender.UnifiedReduced.Proofs.RV
+babybear_instances family_three, RowFacts.funct3, binary_reg_step, binary_imm_step, shift_step, xorrot_step
+
+end Airbender.UnifiedReduced.Standard.Proofs.RV

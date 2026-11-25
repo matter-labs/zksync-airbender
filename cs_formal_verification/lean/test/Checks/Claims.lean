@@ -1,3 +1,16 @@
+import Proven.Final.Circuits.UnifiedReduced.Modular
+import Proven.Final.Trace.UnifiedReduced.Proth120Padding
+import Proven.Final.Trace.UnifiedReduced.Proth120NativeTrace
+import Proven.Final.Circuits.UnifiedReduced.Proth120Input
+import Proven.Final.Circuits.UnifiedReduced.Proth120Artifact
+import Proven.Final.Circuits.UnifiedReduced.Proth120Clock
+import Proven.Final.Circuits.UnifiedReduced.Proth120Execution
+import Proven.Final.Circuits.UnifiedReduced.Proth120Modular
+import Proven.Final.Circuits.UnifiedReduced.Proth120Native
+import Proven.Final.Circuits.UnifiedReduced.Proth120NativeStep
+import Proven.Final.Trace.UnifiedReduced.Proth120Trace
+import Proven.Final.Circuits.UnifiedReduced.Proth120Windows
+import Proven.Final.Circuits.UnifiedReduced.Proth120Witness
 import Proven.Final.Compiler.WorkerCertificates
 import Proven.Final.Compiler.WorkerSelectors
 import Proven.Final.Compiler.WorkerArithmetic
@@ -1409,3 +1422,103 @@ example : Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatis
 example : Airbender.InitsTeardowns.SharedBytesSatisfiableClaim := @Airbender.InitsTeardowns.shared_bytes_satisfiable
 
 #print axioms Airbender.InitsTeardowns.shared_bytes_satisfiable
+
+example : Airbender.UnifiedReduced.Proth120.ArtifactImportClaim := @Airbender.UnifiedReduced.Proth120.artifact_import
+
+#print axioms Airbender.UnifiedReduced.Proth120.artifact_import
+
+example : Airbender.UnifiedReduced.Proth120.ClockAdvanceClaim := @Airbender.UnifiedReduced.Proth120.clock_advance
+
+#print axioms Airbender.UnifiedReduced.Proth120.clock_advance
+
+example : Airbender.UnifiedReduced.Proth120.ClockAdvanceSatisfiableClaim := @Airbender.UnifiedReduced.Proth120.clock_advance_satisfiable
+
+#print axioms Airbender.UnifiedReduced.Proth120.clock_advance_satisfiable
+
+example : Airbender.UnifiedReduced.Proth120.ModularResultClaim := @Airbender.UnifiedReduced.Proth120.modular_result
+
+#print axioms Airbender.UnifiedReduced.Proth120.modular_result
+
+example : Airbender.UnifiedReduced.Proth120.ModularResultSatisfiableClaim := @Airbender.UnifiedReduced.Proth120.modular_result_satisfiable
+
+#print axioms Airbender.UnifiedReduced.Proth120.modular_result_satisfiable
+
+example : Airbender.UnifiedReduced.Proth120.WindowTokensClaim := @Airbender.UnifiedReduced.Proth120.window_tokens
+
+#print axioms Airbender.UnifiedReduced.Proth120.window_tokens
+
+example : Airbender.UnifiedReduced.Proth120.WindowTokensSatisfiableClaim := @Airbender.UnifiedReduced.Proth120.window_tokens_satisfiable
+
+#print axioms Airbender.UnifiedReduced.Proth120.window_tokens_satisfiable
+
+example : Airbender.UnifiedReduced.Proth120.RowSoundnessClaim := @Airbender.UnifiedReduced.Proth120.row_soundness
+
+#print axioms Airbender.UnifiedReduced.Proth120.row_soundness
+
+example : Airbender.UnifiedReduced.Proth120.RowSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Proth120.row_soundness_satisfiable
+
+#print axioms Airbender.UnifiedReduced.Proth120.row_soundness_satisfiable
+
+example : Airbender.UnifiedReduced.Proth120.NativeArithmeticClaim := @Airbender.UnifiedReduced.Proth120.native_arithmetic
+
+#print axioms Airbender.UnifiedReduced.Proth120.native_arithmetic
+
+example : Airbender.UnifiedReduced.Proth120.NativeArithmeticSatisfiableClaim := @Airbender.UnifiedReduced.Proth120.native_arithmetic_satisfiable
+
+#print axioms Airbender.UnifiedReduced.Proth120.native_arithmetic_satisfiable
+
+example : Airbender.UnifiedReduced.Proth120.NativeRowClaim := @Airbender.UnifiedReduced.Proth120.native_row
+
+#print axioms Airbender.UnifiedReduced.Proth120.native_row
+
+example : Airbender.UnifiedReduced.Proth120.NativeRowSatisfiableClaim := @Airbender.UnifiedReduced.Proth120.native_row_satisfiable
+
+#print axioms Airbender.UnifiedReduced.Proth120.native_row_satisfiable
+
+example : Airbender.UnifiedReduced.Proth120.NativeStepSoundnessClaim := @Airbender.UnifiedReduced.Proth120.native_step_soundness
+
+#print axioms Airbender.UnifiedReduced.Proth120.native_step_soundness
+
+example : Airbender.UnifiedReduced.Proth120.NativeStepSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Proth120.native_step_soundness_satisfiable
+
+#print axioms Airbender.UnifiedReduced.Proth120.native_step_soundness_satisfiable
+
+example : Airbender.UnifiedReduced.Proth120.TraceSoundnessClaim := @Airbender.UnifiedReduced.Proth120.trace_soundness
+
+#print axioms Airbender.UnifiedReduced.Proth120.trace_soundness
+
+example : Airbender.UnifiedReduced.Proth120.TraceSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Proth120.trace_soundness_satisfiable
+
+#print axioms Airbender.UnifiedReduced.Proth120.trace_soundness_satisfiable
+
+example : Airbender.UnifiedReduced.Proth120.NativeTraceSoundnessClaim := @Airbender.UnifiedReduced.Proth120.native_trace_soundness
+
+#print axioms Airbender.UnifiedReduced.Proth120.native_trace_soundness
+
+example : Airbender.UnifiedReduced.Proth120.NativeTraceSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Proth120.native_trace_soundness_satisfiable
+
+#print axioms Airbender.UnifiedReduced.Proth120.native_trace_soundness_satisfiable
+
+example : Airbender.UnifiedReduced.Proth120.CSRRowSoundnessClaim := @Airbender.UnifiedReduced.Proth120.csr_row_soundness
+
+#print axioms Airbender.UnifiedReduced.Proth120.csr_row_soundness
+
+example : Airbender.UnifiedReduced.Proth120.CSRRowSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Proth120.csr_row_soundness_satisfiable
+
+#print axioms Airbender.UnifiedReduced.Proth120.csr_row_soundness_satisfiable
+
+example : Airbender.UnifiedReduced.Proth120.PaddedTraceSoundnessClaim := @Airbender.UnifiedReduced.Proth120.padded_trace_soundness
+
+#print axioms Airbender.UnifiedReduced.Proth120.padded_trace_soundness
+
+example : Airbender.UnifiedReduced.Proth120.PaddedTraceSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Proth120.padded_trace_soundness_satisfiable
+
+#print axioms Airbender.UnifiedReduced.Proth120.padded_trace_soundness_satisfiable
+
+example : Airbender.UnifiedReduced.Modular.BabyBearResultClaim := @Airbender.UnifiedReduced.Modular.babyBear_result
+
+#print axioms Airbender.UnifiedReduced.Modular.babyBear_result
+
+example : Airbender.UnifiedReduced.Modular.BabyBearResultSatisfiableClaim := @Airbender.UnifiedReduced.Modular.babyBear_result_satisfiable
+
+#print axioms Airbender.UnifiedReduced.Modular.babyBear_result_satisfiable
