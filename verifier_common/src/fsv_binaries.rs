@@ -28,14 +28,15 @@ pub enum FsvProfile {
     Standard,
     /// Unified recursion verifying the merged-mode compression schedule.
     Compression,
-    CompressionFinalWrap,
+    /// The mode's last compression statement linked for the wrap ROM.
+    L1Wrap,
 }
 
 impl FsvProfile {
     #[must_use]
     pub const fn rom(self) -> RomGeometry {
         match self {
-            Self::CompressionFinalWrap => L1_WRAP_ROM,
+            Self::L1Wrap => L1_WRAP_ROM,
             Self::Standard | Self::Compression => REGULAR_ROM,
         }
     }
@@ -63,9 +64,9 @@ impl FsvDescriptor {
     }
 
     #[must_use]
-    pub const fn compression(profile: FsvProfile) -> Self {
+    pub const fn compression(soundness_mode: SoundnessMode, profile: FsvProfile) -> Self {
         Self {
-            soundness_mode: SoundnessMode::PessimisticConjecture,
+            soundness_mode,
             program: FsvProgram::UnifiedRecursionLayer,
             profile,
             blake: BlakeMode::BlakeSpecialOpcodes,
@@ -108,10 +109,10 @@ const fn entry(
     }
 }
 
-/// Every built guest, with ethproofs-soundcalc guests in their mode subdirectory.
+/// Every built guest, grouped by soundness mode.
 pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
     use BlakeMode::{BlakeSpecialOpcodes, Compression};
-    use FsvProfile::{CompressionFinalWrap, Standard};
+    use FsvProfile::{L1Wrap, Standard};
     use FsvProgram::*;
     use SoundnessMode::{EthproofsSoundnessCalc, PessimisticConjecture};
     &[
@@ -120,42 +121,42 @@ pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
             UnrolledBaseLayer,
             Standard,
             Compression,
-            "fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf",
+            "pessimistic_conjecture/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf",
         ),
         entry(
             PessimisticConjecture,
             UnrolledRecursionLayer,
             Standard,
             Compression,
-            "fsv_unrolled_recursion_layer_sec_100_blake2_with_compression.elf",
+            "pessimistic_conjecture/fsv_unrolled_recursion_layer_sec_100_blake2_with_compression.elf",
         ),
         entry(
             PessimisticConjecture,
             UnifiedRecursionLayer,
             Standard,
             Compression,
-            "fsv_unified_recursion_layer_sec_100_blake2_with_compression.elf",
+            "pessimistic_conjecture/fsv_unified_recursion_layer_sec_100_blake2_with_compression.elf",
         ),
         entry(
             PessimisticConjecture,
             UnifiedRecursionLayer,
             Standard,
             BlakeSpecialOpcodes,
-            "fsv_unified_recursion_layer_sec_100_special_opcodes_extension.elf",
+            "pessimistic_conjecture/fsv_unified_recursion_layer_sec_100_special_opcodes_extension.elf",
         ),
         entry(
             PessimisticConjecture,
             UnifiedRecursionLayer,
             FsvProfile::Compression,
             BlakeSpecialOpcodes,
-            "fsv_unified_recursion_layer_sec_100_compression_special_opcodes_extension.elf",
+            "pessimistic_conjecture/fsv_unified_recursion_layer_sec_100_compression_special_opcodes_extension.elf",
         ),
         entry(
             PessimisticConjecture,
             UnifiedRecursionLayer,
-            CompressionFinalWrap,
+            L1Wrap,
             BlakeSpecialOpcodes,
-            "fsv_unified_recursion_layer_sec_100_compression_final_wrap_special_opcodes_extension.elf",
+            "pessimistic_conjecture/fsv_unified_recursion_layer_sec_100_compression_final_wrap_special_opcodes_extension.elf",
         ),
         entry(
             EthproofsSoundnessCalc,
@@ -184,6 +185,20 @@ pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
             Standard,
             BlakeSpecialOpcodes,
             "ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_special_opcodes_extension.elf",
+        ),
+        entry(
+            EthproofsSoundnessCalc,
+            UnifiedRecursionLayer,
+            FsvProfile::Compression,
+            BlakeSpecialOpcodes,
+            "ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_compression_special_opcodes_extension.elf",
+        ),
+        entry(
+            EthproofsSoundnessCalc,
+            UnifiedRecursionLayer,
+            L1Wrap,
+            BlakeSpecialOpcodes,
+            "ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_compression_wrap_special_opcodes_extension.elf",
         ),
     ]
 };

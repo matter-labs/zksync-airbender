@@ -55,14 +55,15 @@ impl SecurityLevel {
 pub enum SoundnessMode {
     /// The in-house capacity-conjecture accounting
     /// ([`PessimisticConjectureMode`](crate::gkr::whir::proximity_testing_modes::PessimisticConjectureMode):
-    /// one query at rate `ρ` is worth `log2(1/ρ)` bits, plus 20 % extra
-    /// queries; no folding-challenge or OOD proof of work): the production
+    /// one query at rate `ρ` is worth `log2(1/ρ)` bits, with a 20 % query-count
+    /// margin): the production
     /// ladders of `example_configs::pessimistic_conjecture`.
     PessimisticConjecture,
     /// Schedules certified at the security level by `ethereum/soundcalc`
-    /// (commit `2af5e7d`, 2026-09-21): a unique-decoding base round, Johnson
-    /// bound later rounds with an explicit multiplicity, a proof of work on
-    /// every folding challenge and on the single OOD sample of every oracle.
+    /// (commit `2af5e7d`, 2026-09-21): a unique-decoding or Johnson-bound base
+    /// round, Johnson-bound later rounds with an explicit multiplicity, and a
+    /// proof of work on every folding challenge and on the single OOD sample
+    /// of every oracle.
     /// See `example_configs::ethproofs_soundcalc`.
     EthproofsSoundnessCalc,
 }
@@ -73,8 +74,7 @@ impl SoundnessMode {
         SoundnessMode::EthproofsSoundnessCalc,
     ];
 
-    /// The mode of the configs proved and verified by default (every tracked
-    /// proof / verifier fixture).
+    /// The default mode when the caller does not specify one.
     pub const DEFAULT: SoundnessMode = SoundnessMode::PessimisticConjecture;
 
     /// Stable spelling accepted by command-line callers.

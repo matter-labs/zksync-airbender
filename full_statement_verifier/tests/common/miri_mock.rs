@@ -8,7 +8,8 @@ use full_statement_verifier::{
     },
     statement_common::read_setup_cap,
     unified_circuit_statement::{
-        address_high_bits_shift, verify_full_statement_for_unified_circuit,
+        address_high_bits_shift, verify_ethproofs_compression_statement,
+        verify_full_statement_for_unified_circuit,
         verify_full_statement_for_unified_circuit_without_delegations,
     },
     unrolled_circuit_params,
@@ -324,7 +325,7 @@ mode_statements!(pessimistic_conjecture);
 mode_statements!(ethproofs_soundcalc);
 
 macro_rules! compression_statement {
-    ($mode:ident, $module:ident) => {
+    ($mode:ident, $module:ident, $statement:ident) => {
         mod $mode {
             use super::*;
             use full_statement_verifier::imports::$module as m;
@@ -342,7 +343,7 @@ macro_rules! compression_statement {
                 // SAFETY: the production reader and statement have no extra caller obligations.
                 unsafe {
                     let setup = read_setup_cap::<_, { m::CAP_SIZE }>(nds);
-                    verify_full_statement_for_unified_circuit_without_delegations::<
+                    $statement::<
                         _,
                         DebugErrorCreator,
                         USE_REDUCED_BLAKE2_ROUNDS,
@@ -359,7 +360,13 @@ macro_rules! compression_statement {
 
 compression_statement!(
     pessimistic_conjecture_compression,
-    unified_reduced_machine_sec_100_compression_final
+    unified_reduced_machine_sec_100_compression_final_pessimistic_conjecture,
+    verify_full_statement_for_unified_circuit_without_delegations
+);
+compression_statement!(
+    ethproofs_soundcalc_compression,
+    unified_reduced_machine_sec_100_compression_ethproofs_soundcalc,
+    verify_ethproofs_compression_statement
 );
 
 impl Selection {
@@ -372,7 +379,7 @@ impl Selection {
                 pessimistic_conjecture_compression::statement(nds)
             }
             (SoundnessMode::EthproofsSoundnessCalc, Chain::Compression) => {
-                panic!("Ethproofs compression statement is unavailable")
+                ethproofs_soundcalc_compression::statement(nds)
             }
             (SoundnessMode::PessimisticConjecture, _) => {
                 pessimistic_conjecture::statement(self.chain, nds)

@@ -22,13 +22,6 @@ case $stage_filter in
   ''|circuits|base_unified|unrolled|compression|l1) ;;
   *) echo "unknown stage: $stage_filter" >&2; exit 1 ;;
 esac
-case $stage_filter in
-  compression|l1)
-    [[ $mode_filter != ethproofs_soundcalc ]] || {
-      echo "L1 stages support only pessimistic_conjecture" >&2; exit 1;
-    }
-    mode_filter=pessimistic_conjecture ;;
-esac
 backend=${FIXTURE_BACKEND:-cpu}
 case $backend in
   cpu|gpu) ;;
@@ -113,10 +106,8 @@ check_artifact() {
   local trusted=()
   # The cache includes compression records; L1 wrap verification stays external.
   if [[ -n $trusted_params && $name != l1 ]]; then
-    local params="$trusted_params/$cli_mode-trusted-params.json"
-    local params_target=recursion-unified
-    [[ $mode != pessimistic_conjecture ]] || params_target=compression
-    [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --target "$params_target" --backend cpu --output "$params"
+    local params="$trusted_params/$cli_mode-compression-trusted-params.json"
+    [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --target compression --backend cpu --output "$params"
     trusted=(--trusted-params "$params")
   fi
   "$cli" verify --proof "$file" --bin "$bin" --soundness-mode "$cli_mode" "${trusted[@]}"
@@ -131,8 +122,7 @@ for mode in "${modes[@]}"; do
   chain_out="$out_repo/fixtures/chains/$mode"
   chain_parent="$repo/fixtures/chains/$mode"
   common=(--bin "$bin" --backend "$backend" --soundness-mode "$cli_mode" --output-dir "$chain_out")
-  stages=(circuits base_unified unrolled)
-  [[ $mode != pessimistic_conjecture ]] || stages+=(compression l1)
+  stages=(circuits base_unified unrolled compression l1)
   [[ -z $stage_filter ]] || stages=("$stage_filter")
   for stage in "${stages[@]}"; do
     echo "== $mode / $stage"

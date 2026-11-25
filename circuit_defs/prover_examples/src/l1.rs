@@ -35,7 +35,7 @@ use prover::tests::gkr::large_field::{
 use prover::tests::gkr::orchestration::common::{
     dummy_external_challenges, run_vm_and_capture, ProgramConfig,
 };
-use prover::tests::gkr::unified_reduced_machine_proth120;
+use prover::tests::gkr::proth120_unified_witness;
 use prover::transcript::Keccak256Transcript;
 use prover::worker::Worker;
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
@@ -96,7 +96,7 @@ pub fn prove_l1_wrap_in_recompute_mode(
     let (full_trace, table_driver, decoder_table, top_bits) =
         build_unified_trace_without_precompiles(
             &vm,
-            unified_reduced_machine_proth120::witness_eval_fn,
+            proth120_unified_witness::witness_eval_fn,
             &unified_circuit,
             num_teardown_sets,
             trace_len,

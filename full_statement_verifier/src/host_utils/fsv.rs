@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn compression_guests_decode_at_their_rom() {
-        use verifier_common::fsv_binaries::{FsvProfile, FSV_REGISTRY};
+        use verifier_common::fsv_binaries::{FsvProfile, SoundnessMode, FSV_REGISTRY};
         for entry in FSV_REGISTRY
             .iter()
             .filter(|entry| entry.descriptor.profile != FsvProfile::Standard)
@@ -159,16 +159,21 @@ mod tests {
             assert!(guest.unpadded_bin().len() <= words);
             assert!(guest.unpadded_text().len() <= words);
         }
-        let wrap = FsvDescriptor::compression(FsvProfile::CompressionFinalWrap);
-        let bytes = std::fs::read(canonical_fsv_dir().join(wrap.relative_path())).unwrap();
-        assert!(matches!(
-            read_elf_with_rom(
-                &bytes,
-                ElfReadMode::Legacy,
-                common_constants::rom::REGULAR_ROM
-            ),
-            Err(riscv_transpiler::elf::ElfReadError::Layout(_))
-        ));
+        for &mode in SoundnessMode::ALL {
+            let wrap = FsvDescriptor::compression(mode, FsvProfile::L1Wrap);
+            let bytes = std::fs::read(canonical_fsv_dir().join(wrap.relative_path())).unwrap();
+            assert!(
+                matches!(
+                    read_elf_with_rom(
+                        &bytes,
+                        ElfReadMode::Legacy,
+                        common_constants::rom::REGULAR_ROM
+                    ),
+                    Err(riscv_transpiler::elf::ElfReadError::Layout(_))
+                ),
+                "{mode:?} wrap guest must reject the regular ROM geometry"
+            );
+        }
     }
 
     #[test]

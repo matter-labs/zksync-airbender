@@ -10,7 +10,7 @@ use crate::witness::Address;
 #[test]
 fn cpu_relations_abi_pins() {
     let circuit = serde_json::from_slice(include_bytes!(
-        "../../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
+        "../../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json"
     ))
     .unwrap();
     let _relations = super::LookupRelationsPr::new(&circuit);

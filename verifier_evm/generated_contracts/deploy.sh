@@ -19,6 +19,11 @@
 set -e
 cd "$(dirname "$0")"
 
+case "${1:-}" in
+  pessimistic_conjecture|ethproofs_soundcalc) MODE=$1; shift ;;
+  *) echo "usage: $0 <pessimistic_conjecture|ethproofs_soundcalc>" >&2; exit 1 ;;
+esac
+
 # ---- configuration: edit for the target network ------------------------------------------------
 RPC=${RPC:-http://127.0.0.1:8545}
 KEY=${KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
@@ -52,16 +57,17 @@ deploy_create2() {
 }
 
 echo "== building GkrWhirVerifier + TestRegistry =="
-( cd l1_wrap/merged && forge build >/dev/null )
+( cd "$MODE/merged" && forge build >/dev/null )
 
 # Read the generated address before sending any transaction. address(0x00...) is an
 # integer-to-address literal, avoiding checksum interpretation by Solidity.
-GENERATED_REGISTRY=$(sed -n 's/.*constant __TEMPLATE_REGISTRY = address(0x00\([0-9a-f]\{40\}\));.*/0x\1/p' l1_wrap/merged/src/GkrWhirVerifier.sol)
+GENERATED_REGISTRY=$(sed -n 's/.*constant __TEMPLATE_REGISTRY = address(0x00\([0-9a-f]\{40\}\));.*/0x\1/p' "$MODE/merged/src/GkrWhirVerifier.sol")
 if [ -z "$GENERATED_REGISTRY" ]; then
   echo "ERROR: generated registry constant not found; regenerate the verifier." >&2
   exit 1
 fi
-registry_initcode=$(jq -r '.bytecode.object' l1_wrap/merged/out/TestRegistry.sol/TestRegistry.json)
+registry_artifact="$MODE/merged/out/TestRegistry.sol/TestRegistry.json"
+registry_initcode=$(jq -r '.bytecode.object' "$registry_artifact")
 if [ -z "$REGISTRY_ADDR" ]; then
   # CreateX hashes this unpermissioned, cross-chain-unprotected salt before CREATE2:
   # https://github.com/pcaversaccio/createx/blob/main/src/CreateX.sol (_guard).
@@ -86,14 +92,23 @@ if [ "$factory_code" = "0x" ]; then
 fi
 
 if [ -z "$REGISTRY_ADDR" ]; then
-  echo "== deploying TestRegistry via CreateX deployCreate2 =="
-  registry_initcode=$(jq -r '.bytecode.object' l1_wrap/merged/out/TestRegistry.sol/TestRegistry.json)
-  REGISTRY_ADDR=$(deploy_create2 "$REGISTRY_SALT" "$registry_initcode")
+  registry_code=$(cast code "$EXPECTED_REGISTRY" --rpc-url "$RPC")
+  registry_runtime=$(jq -r '.deployedBytecode.object' "$registry_artifact")
+  if [ "$registry_code" = "0x" ]; then
+    echo "== deploying TestRegistry via CreateX deployCreate2 =="
+    REGISTRY_ADDR=$(deploy_create2 "$REGISTRY_SALT" "$registry_initcode")
+  elif [ "$registry_code" = "$registry_runtime" ]; then
+    echo "== reusing TestRegistry at $EXPECTED_REGISTRY =="
+    REGISTRY_ADDR=$EXPECTED_REGISTRY
+  else
+    echo "ERROR: registry code at $EXPECTED_REGISTRY differs from TestRegistry." >&2
+    exit 1
+  fi
 fi
 echo "   registry        : $REGISTRY_ADDR"
 
 echo "== deploying GkrWhirVerifier() via CreateX deployCreate2 =="
-initcode=$(jq -r '.bytecode.object' l1_wrap/merged/out/GkrWhirVerifier.sol/GkrWhirVerifier.json)
+initcode=$(jq -r '.bytecode.object' "$MODE/merged/out/GkrWhirVerifier.sol/GkrWhirVerifier.json")
 registry_code=$(cast code "$REGISTRY_ADDR" --rpc-url "$RPC")
 if [ "$registry_code" = "0x" ]; then
   echo "ERROR: registry $REGISTRY_ADDR has no code." >&2
@@ -103,8 +118,8 @@ ADDR=$(deploy_create2 "$VERIFIER_SALT" "$initcode")
 echo "   GkrWhirVerifier : $ADDR"
 # The runtime has no getter: compare its bytes with the generated runtime prefix
 # plus embedded setup. This also checks that the generated registry constant was deployed.
-prefix=$(jq -r '.deployedBytecode.object' l1_wrap/merged/out/GkrWhirVerifier.sol/GkrWhirVerifierCode.json)
-setup=$(sed -n 's/.*bytes.concat(.*hex"\([0-9a-f]*\)").*/\1/p' l1_wrap/merged/src/GkrWhirVerifier.sol)
+prefix=$(jq -r '.deployedBytecode.object' "$MODE/merged/out/GkrWhirVerifier.sol/GkrWhirVerifierCode.json")
+setup=$(sed -n 's/.*bytes.concat(.*hex"\([0-9a-f]*\)").*/\1/p' "$MODE/merged/src/GkrWhirVerifier.sol")
 deployed=$(cast code "$ADDR" --rpc-url "$RPC")
 if [ -z "$setup" ] || [ "$deployed" != "0x${prefix#0x}${setup}" ]; then
   echo "ERROR: deployed verifier runtime differs from the generated registry/setup" >&2
@@ -112,4 +127,4 @@ if [ -z "$setup" ] || [ "$deployed" != "0x${prefix#0x}${setup}" ]; then
 fi
 echo "== done =="
 echo "send the proof transaction with:"
-echo "   ./send_proof.sh $ADDR"
+echo "   ./send_proof.sh $MODE $ADDR"

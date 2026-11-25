@@ -28,30 +28,41 @@ PYTHONPATH=/tmp/soundcalc python3 late_round_rebalance.py      # JBR-rebalanced 
   `WHIR(cfg)` every driver overwrites `w.log_inv_rates` with our explicit
   per-oracle `lde_factor_log2` list (plus a trailing copy).
 * The regime is chosen per iteration through a dispatching `Mixed` regime
-  (keyed by the oracle's rate): unique decoding (`UniqueDecodingRegime`) for
-  the base round, Johnson bound with an explicit multiplicity
-  (`JohnsonBoundRegime(F, explicit_m=m)`, slack `η = √ρ/(2m)`) afterwards.
+  (keyed by the oracle's rate): unique decoding (`UniqueDecodingRegime`) or
+  Johnson bound with an explicit multiplicity
+  (`JohnsonBoundRegime(F, explicit_m=m)`, slack `η = √ρ/(2m)`). The base round
+  defaults to unique decoding; at base rates of 1/4 and below a Johnson-bound
+  base round is certifiable within the grinding budget.
 * Per oracle the search tries every LDE factor whose domain fits 2^27 and
   every `m ∈ {3, 4, 5, 8, 12, 20}` plus unique decoding, keeps the candidates
-  whose fold terms can be lifted to the target with ≤ `FOLD_CAP` (24) bits of
-  folding PoW per sumcheck step and whose OOD term with ≤ `LATER_POW` (27)
-  bits of OOD PoW, and picks the fewest queries (then the least grinding,
-  then the best rate). Query PoW is 27 in the base round (176 unique-decoding queries; no round of the mode grinds more than 27 bits); afterwards the
-  query count is sized against a 27-bit cap and the PoW is then lowered to
-  the smallest grind that still lifts the round's query term to the target
-  (12 queries at 6.28 bits each are 75 bits, so 25 bits of grind, not 27).
+  whose fold and OOD terms can be lifted to the target within the shape's
+  grinding caps, and picks the fewest queries (then the least grinding,
+  then the best rate). The default caps are `FOLD_CAP` for folding PoW per
+  sumcheck step and `LATER_POW` for OOD and query PoW. Each shape supplies
+  its base query PoW; afterwards the query count is sized against the query
+  cap and the PoW is lowered to the smallest grind that still lifts the
+  round's query term to the target.
 * Virtual packing (`fold_log2 = 0`) is emulated as a message one bit larger
   with a round-0 fold of 1 (soundcalc needs `k_0 ≥ 1`): the re-committed
   oracle 0 is then exactly the batched polynomial; the emulated base fold
   term is 1 bit conservative and the batching term is recomputed on the real
   base code.
 * The committed-polynomial ceiling of a shape only sets the batching PoW
-  (`pow_bits_for_batched_proximity` at the ceiling, batching term 102 bits).
+  for unique decoding (`pow_bits_for_batched_proximity` at the ceiling).
+  A Johnson-bound base round takes the smallest batching grind that lifts
+  its regime's batching term to the target.
+* The compression shape searches both base regimes at its own base rate
+  and grinding caps, reusing the unified circuit and its merged commitment.
+  Each Ext4 challenge reduces four transcript words into BabyBear, with
+  at most three preimages per coordinate. The search uses the resulting
+  maximum point mass `81/2^128` for batching, folding, and OOD, by
+  constructing the field and proximity regimes with denominator `2^128/81`.
+  The Compression schedule reaches 100 bits for every WHIR PCS term at
+  the 128-column ceiling. Batching binds at 100 bits.
 
-The production shapes in `ethproofs_soundcalc.rs` are not the search's fewest-query
-output: they are tuned for proving time (a lower grind cap, a cheaper oracle-0 commit for
-more queries) and were certified with the same pinned WHIR module. The test-circuit shapes
-keep the search's schedules.
+The standard production shapes in `ethproofs_soundcalc.rs` are tuned for proving time
+(a lower grind cap, a cheaper oracle-0 commit for more queries) and were certified with the
+same pinned WHIR module. The Compression and test-circuit shapes use the search's schedules.
 
 `whir_schedule_search.py` prints each shape as `WhirSchedule` fields with the
 per-step folding PoW list (our `folding_pow_bits` is one value per oracle: the
@@ -60,12 +71,22 @@ unique-decoding analysis would need. Copy a new block into
 `ethproofs_soundcalc.rs` as an `EthproofsSoundcalcEntry` together with the
 reasons for the regime choices.
 
-Not implemented in this mode: the Compression (2^23, base LDE 4) and CompressionFinal
-(2^22, base LDE 16) schedules and the EVM Proth120 2^26 packed config
-(`assess_current_configs.py` evaluates all three;
-Proth120 with 2^31 domains caps the Johnson-bound fold term near 48–57 bits, so
-a 100-bit schedule there needs smaller domains and ~75 unique-decoding queries
-per round).
+## Proth120 L1 wrap (`l1_wrap.py`)
+
+```bash
+PYTHONPATH=/tmp/soundcalc python3 l1_wrap.py
+```
+
+The driver reads the generated Ethproofs L1 wrap prover config and certifies
+every WHIR PCS term at 100 bits or more with soundcalc. It uses the 2^22 trace, packing by 8,
+14 packed columns, a cap of 32 and the Johnson bound with m = 3 at every oracle.
+The base LDE factor is 128. The internal factors are 256, 512, 1024, 4096 and 8192.
+The driver applies each oracle's configured folding grind at every step and
+checks both the Proth120 field size and the conservative challenge denominator
+`2^128 / 37`. With the same challenge denominator, a 20-bit external
+challenge grind and a 5.31-bit Johnson list loss, the committed layout gives
+107.28 bits for GKR lookup and 110.90 bits for single-instance memory with a
+2-bit reserve. The `ethproofs_l1_wrap_gkr_security_margins` test checks both terms.
 
 ## Rebalancing the pessimistic ladders' late rounds (`late_round_rebalance.py`)
 

@@ -29,17 +29,24 @@ for d in "$CARGO_REGISTRY"/*; do
     REMAP_ARGS="${REMAP_ARGS},\"--remap-path-prefix=${d}=/cargo-registry\""
 done
 
-bin=fsv_unified_recursion_layer_sec_100_compression_final_wrap
-stem=${bin}_special_opcodes_extension
-flags=(--locked --release -Z panic-immediate-abort -Z build-std=core,alloc
-       --config "build.rustflags=[${REMAP_ARGS},\"-A\",\"warnings\",\"-C\",\"link-arg=-Map=wrap-link.map\"]"
-       -p gkr_verifier_l1_wrap --bin "$bin")
-cargo build "${flags[@]}"
-
 # Keep the linked ELF, including .text, as the canonical guest input.
 out_dir=../gkr_verifier/full_statement_verifiers
-mkdir -p "$out_dir"
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
-cargo objcopy "${flags[@]}" -- -R .comment "$tmp_dir/$stem.elf"
-cp "$tmp_dir/$stem.elf" "$out_dir/$stem.elf"
+
+build_guest() {
+    local name=$1 soundness=$2
+    local bin=${name}_${soundness}
+    local stem=${name}_special_opcodes_extension
+    local dest=$out_dir/$soundness
+    local -a flags=(--locked --release -Z panic-immediate-abort -Z build-std=core,alloc
+                    --config "build.rustflags=[${REMAP_ARGS},\"-A\",\"warnings\",\"-C\",\"link-arg=-Map=wrap-link.map\"]"
+                    -p gkr_verifier_l1_wrap --bin "$bin")
+    cargo build "${flags[@]}"
+    cargo objcopy "${flags[@]}" -- -R .comment "$tmp_dir/$stem.elf"
+    mkdir -p "$dest"
+    cp "$tmp_dir/$stem.elf" "$dest/$stem.elf"
+}
+
+build_guest fsv_unified_recursion_layer_sec_100_compression_final_wrap pessimistic_conjecture
+build_guest fsv_unified_recursion_layer_sec_100_compression_wrap ethproofs_soundcalc

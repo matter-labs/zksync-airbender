@@ -2151,13 +2151,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 merged_base_commitment,
             ),
         );
-    // Derived per-circuit from `security_bits` (same as the batched-proximity bits
-    // above), so prover grind and this baked const cannot diverge.
-    let lookup_challenges_pow_bits =
-        pow_bits::lookup_challenges_pow_bits::<MW::BaseField, MW::ChallengeField>(
-            security_bits as usize,
-            pow_bits::lookup_identity_degree(compiled_circuit),
-        );
+    let lookup_challenges_pow_bits = prover_config
+        .lookup_challenges_pow_bits::<MW::BaseField, MW::ChallengeField>(compiled_circuit);
     let whir_cap_size = whir_schedule.cap_size;
     let whir_cap_size_log2 = whir_cap_size.trailing_zeros() as usize;
 

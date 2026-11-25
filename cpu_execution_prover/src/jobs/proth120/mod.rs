@@ -1,11 +1,11 @@
 use super::{inits_and_teardowns, rows};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
-    evaluate_gkr_witness_for_executor_family, l1_wrap,
-    prove_configured_with_gkr_with_storage_and_backend, Field, GKRExternalChallenges,
-    GKRFullWitnessTrace, Keccak256MerkleTreeWithCap, Keccak256Transcript, L1WrapSetup,
-    NaiveGKRBackend, Proth120, Proth120WorkStealingLazyBackend, UnifiedRiscvCircuitOracle,
-    NUM_PERMUTATION_ARGUMENT_KEY_PARTS,
+    evaluate_gkr_witness_for_executor_family, prove_configured_with_gkr_with_storage_and_backend,
+    unified_reduced_machine_proth120_2_21, unified_reduced_machine_proth120_2_22, Field,
+    GKRExternalChallenges, GKRFullWitnessTrace, Keccak256MerkleTreeWithCap, Keccak256Transcript,
+    L1WrapSetup, NaiveGKRBackend, Proth120, Proth120WorkStealingLazyBackend,
+    UnifiedRiscvCircuitOracle, NUM_PERMUTATION_ARGUMENT_KEY_PARTS,
 };
 use execution_prover::messages::{L1WrapProofRequest, L1WrapProofResult};
 use execution_prover::L1WrapResult;
@@ -29,6 +29,15 @@ pub(super) fn run<A: HostTraceAllocator>(
         operation_mode,
     } = request;
     let precomputed = precomputations.l1_wrap();
+    assert!(
+        circuit_type.is_l1_wrap(),
+        "Proth120 CPU requires an L1 wrap circuit type, got {circuit_type:?}"
+    );
+    assert_eq!(
+        precomputed.setup.trace_len,
+        circuit_type.get_domain_size(),
+        "L1 wrap request {circuit_type:?} disagrees with its setup"
+    );
     let committed = precomputed.committed();
     let setup = &precomputed.setup;
     assert_eq!(
@@ -107,7 +116,8 @@ pub(crate) fn evaluate_witness<A: HostTraceAllocator>(
         decoder_table: &setup.decoder_table,
     };
     let witness_eval_fn = match circuit_type {
-        CircuitType::L1Wrap => l1_wrap::witness_eval_fn,
+        CircuitType::L1Wrap21 => unified_reduced_machine_proth120_2_21::l1_wrap::witness_eval_fn,
+        CircuitType::L1Wrap22 => unified_reduced_machine_proth120_2_22::l1_wrap::witness_eval_fn,
         other => panic!("{other:?} is not an L1 wrap circuit"),
     };
     evaluate_gkr_witness_for_executor_family::<Proth120, _, _, _>(

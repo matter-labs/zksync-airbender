@@ -1,4 +1,5 @@
 use super::CanonicalCircuitSetup;
+use crate::config::SoundnessMode;
 use crate::upstream::{
     add_sub_lui_auipc_mop_circuit_setup, jump_branch_slt_circuit_setup,
     load_store_subword_only_circuit_setup, load_store_word_only_circuit_setup,
@@ -99,6 +100,7 @@ pub fn preprocess_binary(
 pub fn circuit_types_for_variant(
     kind: ExecutionKind,
     machine: MachineType,
+    soundness_mode: SoundnessMode,
 ) -> Vec<UnrolledCircuitType> {
     match kind {
         ExecutionKind::Unrolled => {
@@ -119,7 +121,9 @@ pub fn circuit_types_for_variant(
                 MachineType::Reduced,
                 "Unified execution requires the Reduced machine"
             );
-            let CircuitType::Unrolled(circuit) = kind.unified_circuit().unwrap() else {
+            let CircuitType::Unrolled(circuit) =
+                kind.unified_circuit_in_mode(soundness_mode).unwrap()
+            else {
                 unreachable!()
             };
             vec![circuit]

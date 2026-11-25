@@ -8,10 +8,12 @@ use prover::gkr::prover_config::{ProofProfile, WhirInternalRound};
 use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use riscv_transpiler::elf::{read_elf_from_path_with_rom, ElfReadMode};
+use setups::unrolled_circuits::{
+    unified_reduced_machine_proth120_2_21, unified_reduced_machine_proth120_2_22,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup;
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile, FsvProgram};
 use verifier_evm::encoding::{encode_single_tx, FormatParams};
 use worker::Worker;
@@ -169,7 +171,7 @@ fn alternate_case(case: WrapCase) {
         .arg(compression)
         .args(["--soundness-mode", mode.cli_name()])
         .args(["--gpu-memory-preset", "21gib"])
-        .env("AB_L1_WHIR_SCHEDULE", schedule_path)
+        .env("AB_PESSIMISTIC_L1_WHIR_SCHEDULE", schedule_path)
         .arg("--output-dir")
         .arg(&data)
         .args(["--output-file", "proof.json.zlib"])
@@ -185,7 +187,7 @@ fn alternate_case(case: WrapCase) {
     assert_eq!(bundle.proof.whir_proof.whir_schedule, config.whir_schedule);
     let guest = FsvDescriptor {
         soundness_mode: mode,
-        profile: FsvProfile::CompressionFinalWrap,
+        profile: FsvProfile::L1Wrap,
         program: FsvProgram::UnifiedRecursionLayer,
         blake: BlakeMode::BlakeSpecialOpcodes,
     };
@@ -207,7 +209,15 @@ fn alternate_case(case: WrapCase) {
     };
     assert_eq!(proof_pc, final_pc);
     let worker = Worker::new();
-    let setup = l1_wrap_setup(binary, &image.padded_text_words(), &worker);
+    let text = image.padded_text_words();
+    let setup = match mode {
+        SoundnessMode::PessimisticConjecture => {
+            unified_reduced_machine_proth120_2_21::l1_wrap::l1_wrap_setup(binary, &text, &worker)
+        }
+        SoundnessMode::EthproofsSoundnessCalc => {
+            unified_reduced_machine_proth120_2_22::l1_wrap::l1_wrap_setup(binary, &text, &worker)
+        }
+    };
     let twiddles = Twiddles::new(1 << config.whir_message_size_log2(), &worker);
     let rows: Vec<_> = setup
         .setup
@@ -290,14 +300,11 @@ fn alternate_case(case: WrapCase) {
     .unwrap();
     fs::write(
         project.join("src/TestRegistry.sol"),
-        include_str!(concat!(
-            "../generated_contracts/l1_wrap/merged/",
-            "src/TestRegistry.sol"
-        )),
+        include_str!("forge/TestRegistry.sol"),
     )
     .unwrap();
-    let base = include_str!(concat!("../generated_contracts/l1_wrap/merged/", "test/MergedBase.sol"))
-        .replace("../../../debug_data/l1_wrap", "../data")
+    let base = include_str!("forge/MergedBase.sol")
+        .replace("@DATA@", "../data")
         .replace("interface Vm {", "interface Vm {\n    function readFileBinary(string calldata path) external view returns (bytes memory);");
     fs::write(project.join("test/MergedBase.sol"), base).unwrap();
     fs::write(
@@ -305,11 +312,7 @@ fn alternate_case(case: WrapCase) {
         include_str!("gpu_l1_wrap_controls.sol"),
     )
     .unwrap();
-    let settings = include_str!(concat!(
-        "../generated_contracts/l1_wrap/merged/",
-        "foundry.toml"
-    ))
-    .replace("../../../debug_data/l1_wrap", "../data");
+    let settings = include_str!("forge/foundry.toml").replace("@DATA@", "../data");
     fs::write(
         project.join("foundry.toml"),
         settings + "\ngas_limit = 240000000\nblock_gas_limit = 240000000\n",

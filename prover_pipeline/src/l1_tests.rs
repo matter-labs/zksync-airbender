@@ -1,4 +1,7 @@
 use super::*;
+use setups::unrolled_circuits::{
+    unified_reduced_machine_proth120_2_21, unified_reduced_machine_proth120_2_22,
+};
 use std::fs;
 
 fn source() -> ProgramSource {
@@ -6,42 +9,83 @@ fn source() -> ProgramSource {
     ProgramSource::legacy_binaries_from_bin(root.join("examples/basic_fibonacci/app.bin"))
 }
 
-/// Setup-tree level the verifier's pinned setup frontier holds (the cap is level 3).
+#[test]
+fn ethproofs_l1_wrap_gkr_security_margins() {
+    use ::prover::cs::{definitions::NUM_REGISTERS, gkr_compiler::GKRCircuitArtifact};
+    use ::prover::field::Proth120;
+    use ::prover::gkr::prover_config::{example_configs::l1_wrap, pow_bits};
+
+    let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(include_str!(
+        "../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_22/generated/layout.json"
+    ))
+    .expect("embedded 2^22 Proth120 unified layout");
+    let config = l1_wrap::ethproofs_packed_prover_config();
+    assert_eq!(circuit.trace_len, 1 << config.trace_len_log2);
+    let m = 3.0;
+    let loss = ((m + 0.5) * 2.0_f64.powf(config.base_round().lde_factor_log2 as f64 / 2.0)).log2();
+    let challenge_bits = 128.0 - 37.0_f64.log2();
+    let external_pow_bits = f64::from(l1_wrap::EXTERNAL_CHALLENGES_POW_BITS);
+
+    let lookup_degree = pow_bits::lookup_identity_degree(&circuit);
+    let lookup_bits = challenge_bits + external_pow_bits - (lookup_degree as f64).log2() - loss;
+    assert!(lookup_bits >= 100.0, "lookup: {lookup_bits:.9} bits");
+
+    let keys_per_row =
+        circuit.memory_layout.ram_access_sets.len() + 1 + circuit.memory_layout.teardown_sets.len();
+    let memory_degree = circuit.trace_len * keys_per_row + NUM_REGISTERS + 1;
+    let memory_bits =
+        challenge_bits + external_pow_bits - (memory_degree as f64).log2() - 2.0 - loss;
+    assert!(
+        memory_bits >= 100.0,
+        "single-instance memory: {memory_bits:.9} bits"
+    );
+}
+
+/// Setup-tree level pinned by the wrap verifier.
 const SETUP_FRONTIER_LEVEL: usize = 10;
 
 /// Recommits the L1 wrap setup (setup only, no proof), checks its cap against the committed
 /// reference wrap proof, and writes the `2^SETUP_FRONTIER_LEVEL` setup-tree nodes at that
 /// level, in physical order, for the verifier_evm setup frontier.
 #[test]
-#[ignore = "recommits the L1 wrap setup (about a minute of CPU) and writes the verifier_evm setup frontier"]
+#[ignore = "recommits both L1 wrap setups and writes their EVM setup frontiers"]
 fn export_l1_wrap_setup_frontier() {
+    for &mode in SoundnessMode::ALL {
+        export_setup_frontier(mode);
+    }
+}
+
+fn export_setup_frontier(mode: SoundnessMode) {
     use ::prover::field::Proth120;
     use ::prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
     use ::prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
     use ::prover::worker::Worker;
 
-    let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
-        "pessimistic_conjecture",
-        "l1",
-    ));
+    let artifact: ProofArtifact =
+        proof_fixtures::read_file(proof_fixtures::chain_artifact(mode.file_suffix(), "l1"));
     let bundle = artifact.l1.expect("L1 artifact contains the wrap bundle");
     bundle.validate().expect("committed L1 wrap bundle");
     let setup_commitment = &bundle.proof.whir_proof.setup_commitment;
 
-    let circuit_type = CircuitType::L1Wrap;
+    let rom = ::prover::common_constants::rom::L1_WRAP_ROM;
     let (mut binary, mut text) = load_fsv_exact(
         fsv_dir(),
-        &FsvDescriptor::compression(FsvProfile::CompressionFinalWrap),
+        &FsvDescriptor::compression(mode, FsvProfile::L1Wrap),
     )
     .into_words();
-    setups::pad_bytecode_for_proving_with_rom(&mut binary, circuit_type.rom());
-    setups::pad_bytecode_for_proving_with_rom(&mut text, circuit_type.rom());
+    setups::pad_bytecode_for_proving_with_rom(&mut binary, rom);
+    setups::pad_bytecode_for_proving_with_rom(&mut text, rom);
     let worker = Worker::new();
-    let setup = unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup(&binary, &text, &worker);
-    let config = ProofProfile::L1Wrap.prover_config(
-        circuit_type.get_domain_size_log2() as usize,
-        SoundnessMode::PessimisticConjecture,
-    );
+    let setup = match mode {
+        SoundnessMode::PessimisticConjecture => {
+            unified_reduced_machine_proth120_2_21::l1_wrap::l1_wrap_setup(&binary, &text, &worker)
+        }
+        SoundnessMode::EthproofsSoundnessCalc => {
+            unified_reduced_machine_proth120_2_22::l1_wrap::l1_wrap_setup(&binary, &text, &worker)
+        }
+    };
+    let config =
+        ::prover::gkr::prover_config::example_configs::l1_wrap::packed_prover_config_in_mode(mode);
     let pack_log2 = config.pack_log2();
     let twiddles = ::prover::fft::Twiddles::new(1 << (config.trace_len_log2 + pack_log2), &worker);
     let inputs: Vec<&[Proth120]> = setup
@@ -73,7 +117,9 @@ fn export_l1_wrap_setup_frontier() {
         .map(|d| d.iter().map(|w| format!("{w:08x}")).collect())
         .collect();
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../verifier_evm/debug_data/l1_wrap/setup_frontier.json");
+        .join("../verifier_evm/debug_data")
+        .join(mode.file_suffix())
+        .join("setup_frontier.json");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(
         &path,
@@ -102,27 +148,63 @@ fn cpu_compression_rejects_tampered_streams() {
         &artifact.proof,
         BlakeMode::BlakeSpecialOpcodes,
     );
-    native_verify_unified_compression_final(stream.clone()).unwrap();
+    let verify = |stream| {
+        native_verify_unified_compression_in_mode(stream, SoundnessMode::PessimisticConjecture)
+    };
+    verify(stream.clone()).unwrap();
     let count_end = stream.len() - 2 - 16;
     let count_start = count_end - full_statement_verifier::definitions::DELEGATION_TYPES.len();
     for offset in count_start..count_end {
         let mut bad = stream.clone();
         assert_eq!(bad[offset], 0);
         bad[offset] = 1;
-        assert!(native_verify_unified_compression_final(bad)
-            .unwrap_err()
-            .contains("no delegation proofs"));
+        assert!(verify(bad).unwrap_err().contains("no delegation proofs"));
     }
     let mut trailing = stream.clone();
     trailing.push(7);
-    assert!(native_verify_unified_compression_final(trailing)
-        .unwrap_err()
-        .contains("trailing"));
+    assert!(verify(trailing).unwrap_err().contains("trailing"));
     let truncated = stream[..stream.len() - 1].to_vec();
-    assert!(native_verify_unified_compression_final(truncated).is_err());
+    assert!(verify(truncated).is_err());
     let mut flipped = stream;
-    flipped[(CompressionProfile::Final.cap_size() - 1) * 8] ^= 1;
-    assert!(native_verify_unified_compression_final(flipped).is_err());
+    flipped[(CompressionProfile::Final.cap_size(SoundnessMode::PessimisticConjecture) - 1) * 8] ^=
+        1;
+    assert!(verify(flipped).is_err());
+}
+
+#[test]
+#[should_panic(expected = "Ethproofs Compression instance count must be in 1..=3")]
+fn ethproofs_compression_rejects_four_instances() {
+    use full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_compression_ethproofs_soundcalc;
+    use prover::field::{
+        baby_bear::base::BabyBearField, baby_bear::ext4::BabyBearExt4, FieldExtension,
+    };
+
+    let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
+        "ethproofs_soundcalc",
+        "compression",
+    ));
+    let setup_words: usize = artifact
+        .setups
+        .values()
+        .map(|params| params.flattened_setup_caps().len())
+        .sum();
+    let challenge_words = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE
+        * prover::definitions::GKRExternalChallenges::<BabyBearField, BabyBearExt4>::TOTAL_CHALLENGES;
+    let count_offset =
+        setup_words + 3 * artifact.proof.register_final_values.len() + 3 + challenge_words;
+    let mut stream = build_unified_stream(
+        &artifact.setups,
+        &artifact.proof,
+        BlakeMode::BlakeSpecialOpcodes,
+    );
+    assert_eq!(stream[count_offset], 1);
+    stream[count_offset] = 4;
+    stream.truncate(count_offset + 1);
+    let _ = verify_unified_circuit_recursion_layer_sec_100_compression_ethproofs_soundcalc::<
+        _,
+        verifier_common::errors::DebugErrorCreator,
+        { verifier_common::USE_REDUCED_BLAKE2_ROUNDS },
+    >(&mut stream.into_iter());
 }
 
 #[test]
@@ -142,6 +224,7 @@ fn supplied_standard_records_refuse_an_l1_chain_without_recomputation() {
     let mut layer = 0;
     expected_chain_end_params(
         artifact.target,
+        artifact.soundness_mode,
         artifact.chain_end_params.len(),
         &artifact.blake_unrolled,
         &artifact.blake_bridge,

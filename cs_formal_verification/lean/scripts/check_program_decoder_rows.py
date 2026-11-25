@@ -274,8 +274,8 @@ def main():
             )
             exported = list(csv.reader(manifest.splitlines(), delimiter="\t"))
             verifier_configs = {output / f"{name}.text": config for name, config in exported}
-            if len(verifier_configs) != len(exported) or sorted(verifier_configs.values()) != ["reduced"] * 4 + ["unified"] * 5:
-                raise ValueError("expected four reduced and five unified verifier programs")
+            if len(verifier_configs) != len(exported) or sorted(verifier_configs.values()) != ["reduced"] * 4 + ["unified"] * 6:
+                raise ValueError("expected four reduced and six unified verifier programs")
             programs = [(text, text.with_suffix(".bin")) for text in verifier_configs]
         elif args.program:
             programs = [(text, text.with_suffix(".bin")) for text in args.program]

@@ -10,10 +10,10 @@ use gpu_trace::witness::circuit_type::CircuitType;
 
 pub(crate) fn programs() -> GkrProgramsPr {
     let artifact: GKRCircuitArtifact<PR> = serde_json::from_slice(include_bytes!(
-        "../../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
+        "../../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json"
     ))
     .unwrap();
-    GkrProgramsPr::compile(CircuitType::L1Wrap, Arc::new(artifact))
+    GkrProgramsPr::compile(CircuitType::L1Wrap21, Arc::new(artifact))
 }
 
 #[test]
@@ -35,7 +35,7 @@ fn cpu_pr_lookup_pow_bits_follow_the_config() {
     );
     for external in [0, derived, derived + 1] {
         assert_eq!(
-            lookup_pow_bits(circuit, config.security_level, external),
+            lookup_pow_bits(circuit, &config, external),
             derived.max(external)
         );
     }

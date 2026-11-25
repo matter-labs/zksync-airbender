@@ -21,8 +21,7 @@ pub(super) struct FsvPrograms {
     compression_first: Option<VerifiedFsvProgram>,
     /// Every later compression layer verifies Compression proofs (`FsvProfile::Compression`).
     compression_step: Option<VerifiedFsvProgram>,
-    /// The compression statement linked for the L1 wrap ROM (`FsvProfile::CompressionFinalWrap`, linked
-    /// for that ROM): the program the wrap executes over the last compression proof.
+    /// The mode's last compression statement linked for the L1 wrap ROM.
     pub(super) compression_wrap: Option<VerifiedFsvProgram>,
 }
 
@@ -92,7 +91,7 @@ impl FsvPrograms {
             compression_wrap: load(
                 target == ProofTarget::L1,
                 FsvProgram::UnifiedRecursionLayer,
-                FsvProfile::CompressionFinalWrap,
+                FsvProfile::L1Wrap,
                 BlakeMode::BlakeSpecialOpcodes,
             ),
         }

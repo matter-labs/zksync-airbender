@@ -41,7 +41,6 @@ gpu_native_build = { workspace = true }
 crossbeam-channel = "0.5"
 worker = { workspace = true }
 cpu_execution_prover = { workspace = true, features = ["test-support"] }
-unified_reduced_machine_proth120 = { workspace = true }
 full_statement_verifier = { workspace = true, features = ["host_utils", "proof_utils"] }
 verifier_common = { workspace = true }
 setups = { workspace = true }

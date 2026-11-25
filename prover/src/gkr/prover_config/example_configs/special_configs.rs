@@ -1,16 +1,15 @@
-//! compression and wrap configs, supported only in pessimistic-conjecture mode.
-//! Ethproofs-soundcalc mode has no compression or wrap config; see `soundcalc/README.md`.
+//! Compression and L1 wrap configs. See `soundcalc/README.md` for the proven-regime schedules.
 
 use super::*;
 use crate::gkr::whir::proximity_testing_modes::{PessimisticConjectureMode, ProximityTestingMode};
 
 impl ProverConfigProfile {
-    /// The compression and EVM profiles exist only in the pessimistic-conjecture
-    /// mode; Ethproofs for them is deferred product scope.
+    /// The EVM-production packed profile requires pessimistic-conjecture mode.
     pub fn assert_supports(self, soundness_mode: SoundnessMode) {
         assert!(
-            self == Self::Standard || soundness_mode == SoundnessMode::PessimisticConjecture,
-            "{self:?} supports only the pessimistic-conjecture soundness mode, not {soundness_mode:?}"
+            self != Self::EvmProductionPacked
+                || soundness_mode == SoundnessMode::PessimisticConjecture,
+            "{self:?} requires pessimistic-conjecture mode, got {soundness_mode:?}"
         );
     }
 }
@@ -45,6 +44,7 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
         // NOT the WHIR plain-text tail, which the WHIR schedule determines).
         sumcheck_explicit_output_size_log_2: 4,
         security_level: level,
+        lookup_challenges_pow_floor: None,
         // base LDE factor 32 (base_lde_log2 = 5), round-0 values-per-leaf =
         // 2^2; 6 rounds ending in a 2^4 plain-text tail; the 6th round's
         // huge-LDE oracle (the 2^8 poly on a 2^31 domain) is cheap with the
@@ -89,21 +89,24 @@ const COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS: [usize; 4] = [32, 1024, 32768, 1
 /// that can meet the security target. Each value is the least PoW that meets it.
 pub const COMPRESSION_FINAL_POW_BITS: [u32; 5] = [24, 25, 25, 25, 17];
 
-const COMPRESSION_BASE_LDE_FACTOR: usize = 4;
+const PESSIMISTIC_COMPRESSION_BASE_LDE_FACTOR: usize = 4;
 
 /// Repeatable Compression uses a deliberate 25-bit PoW cap to fix the query
 /// count at the fewest queries that can meet the security target. Each value is
 /// the least PoW that meets it.
-pub const COMPRESSION_POW_BITS: [u32; 5] = [25, 25, 25, 25, 17];
+pub const PESSIMISTIC_COMPRESSION_POW_BITS: [u32; 5] = [25, 25, 25, 25, 17];
 
 /// The cap must equal the base LDE: coset commitment requires cap <= LDE,
 /// while splitting the memory cap requires cap >= LDE.
-fn compression_config(
+fn compression_config_for_schedule(
     trace_len_log2: usize,
-    base_lde_factor: usize,
-    whir_steps_schedule: Vec<usize>,
-    queries_and_pow: &[(usize, u32); 5],
+    whir_schedule: WhirSchedule,
 ) -> ProverConfig {
+    assert_eq!(
+        whir_schedule.cap_size,
+        whir_schedule.base_round.lde_factor(),
+        "a compression config's cap must equal its base LDE"
+    );
     ProverConfig {
         trace_len_log2,
         same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
@@ -111,10 +114,23 @@ fn compression_config(
         ),
         commitment_mode: CommitmentMode::MergedMemoryAndWitness,
         dimension_reducing_sumcheck_schedule: Default::default(),
-        cap_size: base_lde_factor,
+        cap_size: whir_schedule.cap_size,
         sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
         security_level: SecurityLevel::Sec100,
-        whir_schedule: WhirSchedule::from_legacy_arrays(
+        lookup_challenges_pow_floor: None,
+        whir_schedule,
+    }
+}
+
+fn compression_config(
+    trace_len_log2: usize,
+    base_lde_factor: usize,
+    whir_steps_schedule: Vec<usize>,
+    queries_and_pow: &[(usize, u32); 5],
+) -> ProverConfig {
+    compression_config_for_schedule(
+        trace_len_log2,
+        WhirSchedule::from_legacy_arrays(
             base_lde_factor,
             base_lde_factor,
             0,
@@ -129,7 +145,7 @@ fn compression_config(
                 .map(|(_, pow)| *pow)
                 .collect::<Vec<_>>(),
         ),
-    }
+    )
 }
 
 /// The terminal CompressionFinal profile.
@@ -148,18 +164,29 @@ pub fn compression_final_config_for_2_22() -> ProverConfig {
 }
 
 /// Repeatable Compression profile.
-pub fn compression_config_for_2_23() -> ProverConfig {
+pub fn pessimistic_compression_config_for_2_23() -> ProverConfig {
     compression_config(
         23,
-        COMPRESSION_BASE_LDE_FACTOR,
+        PESSIMISTIC_COMPRESSION_BASE_LDE_FACTOR,
         vec![1, 5, 5, 5, 4],
         &queries_and_pow_under_pessimistic_conjecture(
             SecurityLevel::Sec100,
-            COMPRESSION_BASE_LDE_FACTOR,
+            PESSIMISTIC_COMPRESSION_BASE_LDE_FACTOR,
             &COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS,
-            COMPRESSION_POW_BITS,
+            PESSIMISTIC_COMPRESSION_POW_BITS,
         ),
     )
+}
+
+/// Repeatable Compression profile under [`SoundnessMode::EthproofsSoundnessCalc`].
+pub fn ethproofs_compression_config_for_2_23() -> ProverConfig {
+    let mut config = compression_config_for_schedule(
+        23,
+        super::ethproofs_soundcalc::COMPRESSION_2_23.schedule(0),
+    );
+    config.lookup_challenges_pow_floor =
+        Some(super::ethproofs_soundcalc::COMPRESSION_LOOKUP_CHALLENGES_POW_BITS);
+    config
 }
 
 /// L1 wrap over the 512 KiB wrap ROM.
@@ -168,37 +195,39 @@ pub mod l1_wrap {
     use std::path::PathBuf;
     use std::sync::OnceLock;
 
-    pub const TRACE_LEN_LOG2: usize = 21;
+    pub const PESSIMISTIC_TRACE_LEN_LOG2: usize = 21;
+    pub const ETHPROOFS_TRACE_LEN_LOG2: usize = 22;
     pub const PACK_LOG2: usize = 3;
     pub const EXPLICIT_OUTPUT_LOG2: usize = 2;
     pub const EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
 
-    const BASE_LDE_FACTOR: usize = 1 << 8;
-    const WHIR_STEPS_LDE_FACTORS: [usize; 4] = [1 << 9, 1 << 12, 1 << 17, 1 << 21];
+    const PESSIMISTIC_BASE_LDE_FACTOR: usize = 1 << 8;
+    const PESSIMISTIC_INTERNAL_LDE_FACTORS: [usize; 4] = [1 << 9, 1 << 12, 1 << 17, 1 << 21];
 
     /// Each round uses the least PoW satisfying `6 * pow + 5 * queries * rate_bits >= 600`.
-    pub const POW_BITS: [u32; 5] = [27, 25, 30, 30, 30];
+    pub const PESSIMISTIC_QUERY_POW_BITS: [u32; 5] = [27, 25, 30, 30, 30];
 
     /// The largest list size each oracle's binding term tolerates at the
     /// configured PoW. These are tolerances, not derived list bounds.
-    pub const LIST_SIZE_CEILINGS: [usize; 5] = [1_044_721_774, 673, 5_387, 172_384, 2_758_157];
+    pub const PESSIMISTIC_LIST_SIZE_CEILINGS: [usize; 5] =
+        [1_044_721_774, 673, 5_387, 172_384, 2_758_157];
 
     /// 100-bit WHIR accounting under the pessimistic conjecture: queries
     /// contribute r/1.2 bits (`PessimisticConjectureMode` in
     /// `whir/proximity_testing_modes.rs`), and the linear proximity-gap charge
     /// in `pow_bits.rs` is applied to each fold. With mu = 37/2^128, every
     /// WHIR RS substep keeps 100 bits for list sizes up to
-    /// [`LIST_SIZE_CEILINGS`]. Nominal-100 shifts have an accepted deficit
-    /// below 10^-6 bit. The base commitment has no OOD sample. The GKR
+    /// [`PESSIMISTIC_LIST_SIZE_CEILINGS`]. Nominal-100 shifts have an accepted
+    /// deficit below 10^-6 bit. The base commitment has no OOD sample. The GKR
     /// evaluation claims bind it for the WHIR rounds; the conjecture assumes
     /// that the lookup and GKR challenges drawn before them carry no list
     /// factor.
-    pub fn packed_prover_config() -> ProverConfig {
-        const SCHEDULE_ENV: &str = "AB_L1_WHIR_SCHEDULE";
+    pub fn pessimistic_packed_prover_config() -> ProverConfig {
+        const SCHEDULE_ENV: &str = "AB_PESSIMISTIC_L1_WHIR_SCHEDULE";
         static CONFIG: OnceLock<ProverConfig> = OnceLock::new();
         CONFIG
             .get_or_init(|| {
-                let mut config = default_packed_prover_config();
+                let mut config = default_pessimistic_packed_prover_config();
                 let Some(path) = std::env::var_os(SCHEDULE_ENV).map(PathBuf::from) else {
                     return config;
                 };
@@ -224,27 +253,28 @@ pub mod l1_wrap {
             .clone()
     }
 
-    fn default_packed_prover_config() -> ProverConfig {
+    fn default_pessimistic_packed_prover_config() -> ProverConfig {
         const CAP_SIZE: usize = 8;
         let level = SecurityLevel::Sec100;
         let queries_and_pow = queries_and_pow_under_pessimistic_conjecture(
             level,
-            BASE_LDE_FACTOR,
-            &WHIR_STEPS_LDE_FACTORS,
-            POW_BITS,
+            PESSIMISTIC_BASE_LDE_FACTOR,
+            &PESSIMISTIC_INTERNAL_LDE_FACTORS,
+            PESSIMISTIC_QUERY_POW_BITS,
         );
         ProverConfig {
-            trace_len_log2: TRACE_LEN_LOG2,
+            trace_len_log2: PESSIMISTIC_TRACE_LEN_LOG2,
             commitment_mode: CommitmentMode::MergedMemoryAndWitness,
-            same_size_sumcheck_schedule: windowed_same_size_schedule(TRACE_LEN_LOG2),
+            same_size_sumcheck_schedule: windowed_same_size_schedule(PESSIMISTIC_TRACE_LEN_LOG2),
             dimension_reducing_sumcheck_schedule: Default::default(),
             cap_size: CAP_SIZE,
             sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
             security_level: level,
+            lookup_challenges_pow_floor: None,
             whir_schedule: WhirSchedule {
                 cap_size: CAP_SIZE,
                 base_round: crate::gkr::prover_config::WhirBaseRoundSchedule {
-                    lde_factor_log2: BASE_LDE_FACTOR.trailing_zeros() as usize,
+                    lde_factor_log2: PESSIMISTIC_BASE_LDE_FACTOR.trailing_zeros() as usize,
                     physical_packing_log2: PACK_LOG2,
                     fold_log2: 1,
                     batching_pow_bits: None,
@@ -252,7 +282,7 @@ pub mod l1_wrap {
                     num_queries: queries_and_pow[0].0,
                     queries_pow_bits: queries_and_pow[0].1,
                 },
-                internal_rounds: WHIR_STEPS_LDE_FACTORS
+                internal_rounds: PESSIMISTIC_INTERNAL_LDE_FACTORS
                     .iter()
                     .enumerate()
                     .map(|(i, lde)| crate::gkr::prover_config::WhirInternalRound {
@@ -266,6 +296,71 @@ pub mod l1_wrap {
                     })
                     .collect(),
             },
+        }
+    }
+
+    pub fn packed_prover_config_in_mode(mode: SoundnessMode) -> ProverConfig {
+        match mode {
+            SoundnessMode::PessimisticConjecture => pessimistic_packed_prover_config(),
+            SoundnessMode::EthproofsSoundnessCalc => ethproofs_packed_prover_config(),
+        }
+    }
+
+    /// The Proth120 L1 wrap at 100 bits per PCS term under the
+    /// Johnson bound with multiplicity 3. `soundcalc/l1_wrap.py` certifies the
+    /// schedule using the maximum challenge point mass `37/2^128`.
+    pub fn ethproofs_packed_prover_config() -> ProverConfig {
+        use crate::gkr::prover_config::{WhirBaseRoundSchedule, WhirInternalRound};
+
+        const CAP_SIZE: usize = 32;
+        ProverConfig {
+            trace_len_log2: ETHPROOFS_TRACE_LEN_LOG2,
+            commitment_mode: CommitmentMode::MergedMemoryAndWitness,
+            same_size_sumcheck_schedule: windowed_same_size_schedule(ETHPROOFS_TRACE_LEN_LOG2),
+            dimension_reducing_sumcheck_schedule: Default::default(),
+            cap_size: CAP_SIZE,
+            sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
+            security_level: SecurityLevel::Sec100,
+            lookup_challenges_pow_floor: None,
+            whir_schedule: WhirSchedule {
+                cap_size: CAP_SIZE,
+                base_round: WhirBaseRoundSchedule {
+                    lde_factor_log2: 7,
+                    physical_packing_log2: PACK_LOG2,
+                    fold_log2: 1,
+                    batching_pow_bits: Some(32),
+                    folding_pow_bits: 28,
+                    num_queries: 22,
+                    queries_pow_bits: 31,
+                },
+                internal_rounds: (0..5)
+                    .map(|i| WhirInternalRound {
+                        lde_factor_log2: [8, 9, 10, 12, 13][i],
+                        folding_log2: [1, 4, 4, 4, 4][i],
+                        num_queries: [19, 17, 15, 12, 11][i],
+                        queries_pow_bits: [29, 28, 29, 31, 31][i],
+                        folding_pow_bits: [29, 31, 29, 30, 29][i],
+                        num_ood_samples: 1,
+                        ood_pow_bits: [12, 12, 9, 7, 4][i],
+                    })
+                    .collect(),
+            },
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::gkr::prover_config::ProofProfile;
+
+        #[test]
+        fn ethproofs_l1_wrap_geometry() {
+            let config =
+                ProofProfile::L1Wrap.prover_config(22, SoundnessMode::EthproofsSoundnessCalc);
+            config.validate_for_whir_message_size(25);
+            assert!(config.merged_memory_and_witness());
+            assert_eq!(config.cap_size, 32);
+            assert_eq!(config.sumcheck_explicit_output_size_log_2, 2);
         }
     }
 }

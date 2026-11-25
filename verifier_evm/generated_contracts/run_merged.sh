@@ -6,8 +6,13 @@ if [ "$#" -ne 0 ]; then
   echo "usage: run_merged.sh" >&2
   exit 1
 fi
-cd "$SCRIPT_DIR/l1_wrap"
-for p in merged negative/wrong_final_pc negative/external_pow negative/batching_pow negative/query_pow_* negative/folding_pow_* negative/ood_pow_*; do
-  ( cd "$p" && forge build >/dev/null )
+for mode in pessimistic_conjecture ethproofs_soundcalc; do
+  (
+    cd "$SCRIPT_DIR/$mode"
+    for p in merged negative/wrong_final_pc negative/external_pow negative/batching_pow negative/query_pow_* negative/folding_pow_* negative/ood_pow_*; do
+      ( cd "$p" && forge build >/dev/null )
+    done
+    cd merged
+    forge test -vv
+  )
 done
-( cd merged && forge test -vv )

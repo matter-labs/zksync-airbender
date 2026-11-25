@@ -5,6 +5,7 @@ use riscv_transpiler::vm::SimpleTape;
 use type_map::concurrent::TypeMap;
 
 use crate::backend::ExecutionBackend;
+use crate::config::SoundnessMode;
 use crate::ProofProfile;
 use common_constants::rom::RomGeometry;
 use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
@@ -18,7 +19,7 @@ use execution_prover_model::MachineType;
 ///   `ProofProfile::Compression`).
 /// - `Unified22`: the 2^22 unified circuit of the compression layers
 ///   (`MachineType::Reduced`, exactly `ProofProfile::CompressionFinal`).
-/// - `L1Wrap`: the 2^21 Proth120 L1 wrap (`MachineType::Reduced`, exactly
+/// - `L1Wrap`: the mode-specific Proth120 L1 wrap (`MachineType::Reduced`, exactly
 ///   `ProofProfile::L1Wrap`).
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ExecutionKind {
@@ -31,12 +32,15 @@ pub enum ExecutionKind {
 impl ExecutionKind {
     /// The circuit every chunk of a unified-style execution is proven in;
     /// `None` for the per-family unrolled execution.
-    pub fn unified_circuit(self) -> Option<CircuitType> {
+    pub fn unified_circuit_in_mode(self, soundness_mode: SoundnessMode) -> Option<CircuitType> {
         match self {
             Self::Unrolled => None,
             Self::Unified => Some(CircuitType::Unrolled(UnrolledCircuitType::Unified)),
             Self::Unified22 => Some(CircuitType::Unrolled(UnrolledCircuitType::Unified22)),
-            Self::L1Wrap => Some(CircuitType::L1Wrap),
+            Self::L1Wrap => Some(match soundness_mode {
+                SoundnessMode::PessimisticConjecture => CircuitType::L1Wrap21,
+                SoundnessMode::EthproofsSoundnessCalc => CircuitType::L1Wrap22,
+            }),
         }
     }
 
@@ -49,8 +53,8 @@ impl ExecutionKind {
     }
 
     /// The ROM geometry the execution's circuits are built for.
-    pub fn rom(self) -> RomGeometry {
-        self.unified_circuit()
+    pub fn rom(self, soundness_mode: SoundnessMode) -> RomGeometry {
+        self.unified_circuit_in_mode(soundness_mode)
             .map_or(common_constants::rom::REGULAR_ROM, |circuit| circuit.rom())
     }
 }

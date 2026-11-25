@@ -3,7 +3,8 @@
 use common_constants::ROM_SECOND_WORD_BITS;
 use prover::definitions::{SecurityLevel, SoundnessMode};
 use prover::tests::gkr::orchestration::canonical_fixtures::{
-    capture_canonical_inputs, CanonicalCircuit, CanonicalInputs, CanonicalTrace, CANONICAL_CIRCUITS,
+    canonical_circuits, capture_canonical_inputs, CanonicalCircuit, CanonicalInputs,
+    CanonicalTrace, CANONICAL_CIRCUITS,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -146,8 +147,8 @@ fn canonical_fixture_encoding() {
         prover::merkle_trees::DefaultTreeConstructor,
     >;
     let root = root();
-    for circuit in CANONICAL_CIRCUITS {
-        for &mode in SoundnessMode::ALL {
+    for &mode in SoundnessMode::ALL {
+        for circuit in canonical_circuits(mode) {
             let path = circuit.proof_path(&root, mode);
             let proof: Proof = proof_fixtures::read_file(&path);
             assert_eq!(

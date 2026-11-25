@@ -20,11 +20,23 @@ pub const CIRCUITS: [&str; 14] = [
     "keccak_theta_rho",
     "keccak_chi5",
 ];
-pub const CHAINS: [&str; 4] = ["base", "unified", "unrolled", "unrolled_unified"];
-/// Canonical special-profile circuits available only in pessimistic mode.
-pub const PESSIMISTIC_CIRCUITS: [&str; 2] = ["compression", "compression_final"];
-/// L1 chains exist only in pessimistic_conjecture.
-pub const L1_CHAINS: [&str; 2] = ["compression", "l1"];
+pub const CHAINS: [&str; 6] = [
+    "base",
+    "unified",
+    "unrolled",
+    "unrolled_unified",
+    "compression",
+    "l1",
+];
+
+pub fn circuits(mode_dir: &str) -> impl Iterator<Item = &'static str> {
+    let special: &'static [&'static str] = match mode_dir {
+        "pessimistic_conjecture" => &["compression", "compression_final"],
+        "ethproofs_soundcalc" => &["compression"],
+        _ => panic!("unknown soundness mode: {mode_dir}"),
+    };
+    CIRCUITS.into_iter().chain(special.iter().copied())
+}
 
 /// Repository root containing fixture data and its producer inputs.
 pub fn root() -> PathBuf {
@@ -50,12 +62,7 @@ pub fn circuit_proof(mode_dir: &str, circuit: &str) -> PathBuf {
 
 pub fn circuit_proof_in(repository_root: &Path, mode_dir: &str, circuit: &str) -> PathBuf {
     assert!(
-        MODES.contains(&mode_dir),
-        "unknown soundness mode: {mode_dir}"
-    );
-    assert!(
-        CIRCUITS.contains(&circuit)
-            || (mode_dir == "pessimistic_conjecture" && PESSIMISTIC_CIRCUITS.contains(&circuit)),
+        circuits(mode_dir).any(|stem| stem == circuit),
         "unknown circuit/mode: {circuit}/{mode_dir}"
     );
     repository_root
@@ -70,8 +77,7 @@ pub fn chain_artifact(mode_dir: &str, chain: &str) -> PathBuf {
         "unknown soundness mode: {mode_dir}"
     );
     assert!(
-        CHAINS.contains(&chain)
-            || (mode_dir == "pessimistic_conjecture" && L1_CHAINS.contains(&chain)),
+        CHAINS.contains(&chain),
         "unknown chain for {mode_dir}: {chain}"
     );
     root()
@@ -116,7 +122,7 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
-    fn assert_inventory(directory: &Path, stems: &[&str], pessimistic_extra: &[&str]) {
+    fn assert_inventory(directory: &Path, stems: impl Fn(&str) -> Vec<&'static str>) {
         let modes: BTreeSet<_> = std::fs::read_dir(directory)
             .unwrap()
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
@@ -127,14 +133,8 @@ mod tests {
                 .unwrap()
                 .map(|entry| entry.unwrap().path())
                 .collect();
-            let extra = if mode == "pessimistic_conjecture" {
-                pessimistic_extra
-            } else {
-                &[]
-            };
-            let expected: BTreeSet<_> = stems
-                .iter()
-                .chain(extra)
+            let expected: BTreeSet<_> = stems(mode)
+                .into_iter()
                 .map(|stem| directory.join(mode).join(format!("{stem}.json.zlib")))
                 .collect();
             assert_eq!(actual, expected);
@@ -143,11 +143,9 @@ mod tests {
 
     #[test]
     fn committed_fixture_inventory() {
-        assert_inventory(
-            &root().join("fixtures/circuits"),
-            &CIRCUITS,
-            &PESSIMISTIC_CIRCUITS,
-        );
-        assert_inventory(&root().join("fixtures/chains"), &CHAINS, &L1_CHAINS);
+        assert_inventory(&root().join("fixtures/circuits"), |mode| {
+            circuits(mode).collect()
+        });
+        assert_inventory(&root().join("fixtures/chains"), |_| CHAINS.to_vec());
     }
 }

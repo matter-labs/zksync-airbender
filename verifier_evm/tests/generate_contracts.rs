@@ -1,6 +1,9 @@
 //! Regenerate the L1 wrap verifier and its ignored negative controls from the canonical bundle.
 mod common;
 use common::MERGED_VERIFIER;
+use prover::definitions::SoundnessMode;
+use prover::gkr::prover_config::ProverConfig;
+use sha3::{Digest, Keccak256};
 
 // CreateX deployCreate2 address for TestRegistry (factory/salt in deploy.sh).
 // TestRegistry intentionally does not import the generated verifier, keeping its initcode stable.
@@ -12,8 +15,16 @@ const REGISTRY_ADDRESS: [u8; 20] = [
 /// The proof aux must match the pinned inputs (external PoW floor, exit PC, top bits).
 /// Packing comes from the prover config.
 /// Returns the final PC.
-fn check_pinned_inputs() -> u32 {
-    let (_, proof, operation_mode) = common::load();
+fn check_pinned_inputs(
+    mode: SoundnessMode,
+    config: &ProverConfig,
+    proof: &common::Proof,
+    operation_mode: &prover::gkr::prover::OperationMode,
+) -> u32 {
+    assert!(
+        config.lookup_challenges_pow_floor.is_none(),
+        "the EVM L1 wrap generator does not support a lookup PoW floor"
+    );
     let prover::gkr::prover::OperationMode::SingleChunk {
         external_challenges_pow_bits,
         final_pc,
@@ -24,12 +35,12 @@ fn check_pinned_inputs() -> u32 {
     };
     assert_eq!(
         prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS,
-        external_challenges_pow_bits,
+        *external_challenges_pow_bits,
         "pinned external PoW floor must match proof aux"
     );
     assert_eq!(
-        common::final_pc(),
-        final_pc,
+        common::final_pc(mode),
+        *final_pc,
         "pinned exit PC must match proof aux"
     );
     assert_eq!(
@@ -37,30 +48,31 @@ fn check_pinned_inputs() -> u32 {
         &proof.inits_and_teardowns_top_bits[..],
         "pinned inits/teardowns top bits must match the proof"
     );
-    final_pc
+    *final_pc
 }
 
-fn generate_wrap(pc: u32) -> verifier_evm::WrapContracts {
-    let (circuit, proof, _) = common::load();
-    let config = common::prover_config();
-    check_pinned_inputs();
-    let (_, nodes) = common::setup_frontier();
-    verifier_evm::generate_wrap_verifier(
-        &circuit,
-        &config,
-        &common::format_params(),
-        pc,
-        common::INITS_TEARDOWNS_TOP_BITS,
-        &proof.whir_proof.setup_commitment.commitment.cap.cap,
-        &nodes,
-        REGISTRY_ADDRESS,
-    )
-}
-
-fn generated_sources() -> Vec<(String, String)> {
-    let pc = common::final_pc();
-    let contracts = generate_wrap(pc);
-    let wrong = generate_wrap(pc ^ 1);
+fn generated_sources(mode: SoundnessMode) -> Vec<(String, String)> {
+    let (circuit, proof, operation_mode) = common::load(mode);
+    let config = common::prover_config(mode);
+    let pc = check_pinned_inputs(mode, &config, &proof, &operation_mode);
+    let (level, nodes) = common::setup_frontier(mode);
+    let params = verifier_evm::encoding::FormatParams {
+        setup_frontier_level: level,
+    };
+    let generate = |pc| {
+        verifier_evm::generate_wrap_verifier(
+            &circuit,
+            &config,
+            &params,
+            pc,
+            common::INITS_TEARDOWNS_TOP_BITS,
+            &proof.whir_proof.setup_commitment.commitment.cap.cap,
+            &nodes,
+            REGISTRY_ADDRESS,
+        )
+    };
+    let contracts = generate(pc);
+    let wrong = generate(pc ^ 1);
     // Preserve the complete former data-contract runtime, including its leading STOP.
     // The code tail makes its placement independent of Solidity's metadata trailer.
     let source = &contracts.verifier_sol;
@@ -79,12 +91,19 @@ fn generated_sources() -> Vec<(String, String)> {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(data.len(), 29_210);
-    use sha3::{Digest, Keccak256};
-    assert_eq!(
-        hex::encode(Keccak256::digest(&data)),
-        "7024dc38fe6be11ae2b04cf75f6210dfdaeced21bde20b3e5836c01737528b85"
-    );
+    let data_hash = hex::encode(Keccak256::digest(&data));
+    let (expected_setup_len, expected_setup_hash) = match mode {
+        SoundnessMode::PessimisticConjecture => (
+            29_210,
+            "7024dc38fe6be11ae2b04cf75f6210dfdaeced21bde20b3e5836c01737528b85",
+        ),
+        SoundnessMode::EthproofsSoundnessCalc => (
+            29_978,
+            "08533672f76282afef58266afb1c35b581bd89810804a18156b076c06d6dc551",
+        ),
+    };
+    assert_eq!(data.len(), expected_setup_len, "{mode:?} setup length");
+    assert_eq!(data_hash, expected_setup_hash, "{mode:?} setup Keccak256");
     // The negative changes only the decoder's pinned PC word.
     assert_eq!(
         contracts.verifier_sol.lines().count(),
@@ -105,15 +124,13 @@ fn generated_sources() -> Vec<(String, String)> {
     assert!(source.contains("ptr := add(SEED_PTR(), __TEMPLATE_GKR_CACHE_OFFSET)"));
     assert!(source.contains("__TEMPLATE_GKR_CACHE_OFFSET         = 448;"));
     assert!(source.contains("__TEMPLATE_GKR_SEED_BYTES           = 32 * 34;"));
-    let (circuit, proof, mode) = common::load();
-    let config = common::prover_config();
     let common::pow::PowLeadingZeros {
         external,
         batching,
         queries,
         folding,
         ood,
-    } = common::pow::leading_zeros(&circuit, &proof, &mode, &config);
+    } = common::pow::leading_zeros(&circuit, &proof, &operation_mode, &config);
     eprintln!("PoW leading zeros: external={external}, batching={batching}, queries={queries:?}, folding={folding:?}, OOD={ood:?}");
     let schedule = config.whir_schedule.queries_pow_bits_per_round();
     assert!(
@@ -186,7 +203,7 @@ fn generated_sources() -> Vec<(String, String)> {
     }
     let mut files = Vec::new();
     // Share the compiler settings, omitting the main project's test file permissions.
-    let foundry = include_str!("../generated_contracts/l1_wrap/merged/foundry.toml")
+    let foundry = include_str!("forge/foundry.toml")
         .split("fs_permissions")
         .next()
         .unwrap();
@@ -197,6 +214,43 @@ fn generated_sources() -> Vec<(String, String)> {
     }
     files.push((MERGED_VERIFIER.into(), contracts.verifier_sol));
     files.push(("merged/MEMORY_LAYOUT.md".into(), contracts.memory_layout));
+    let data_path = format!("../../../debug_data/{}", mode.file_suffix());
+    let folds = config.whir_schedule.fold_steps();
+    let padded_round = if folds.last() == Some(&5) {
+        "_rejectsRunPad(_finalRound(\"_sumcheck\")); // fold 5: ten fields, then five folding nonces".into()
+    } else {
+        let round = (1..folds.len())
+            .rfind(|&round| !(2 * folds[round] * 123).is_multiple_of(8))
+            .expect("a padded internal WHIR sumcheck run");
+        format!("_rejectsRunPad(\"whir_{round}_sumcheck\");")
+    };
+    let controls = include_str!("forge/Merged.t.sol")
+        .replace("@CAP_SIZE@", &config.cap_size.to_string())
+        .replace("@SETUP_HASH@", &data_hash)
+        .replace("@PADDED_WHIR_ROUND@", &padded_round)
+        .replace(
+            "@SETUP_SIZE@",
+            &format!("{}_{:03}", data.len() / 1000, data.len() % 1000),
+        );
+    files.extend([
+        (
+            "merged/foundry.toml".into(),
+            include_str!("forge/foundry.toml").replace("@DATA@", &data_path),
+        ),
+        (
+            "merged/src/TestRegistry.sol".into(),
+            include_str!("forge/TestRegistry.sol").into(),
+        ),
+        (
+            "merged/test/MergedBase.sol".into(),
+            include_str!("forge/MergedBase.sol").replace("@DATA@", &data_path),
+        ),
+        ("merged/test/Merged.t.sol".into(), controls),
+        (
+            "merged/script/SendProof.s.sol".into(),
+            include_str!("forge/SendProof.s.sol").replace("@DATA@", &data_path),
+        ),
+    ]);
     files
 }
 
@@ -248,10 +302,11 @@ fn raised_round_difficulty(source: &str, selector: &str, name: &str, old: u32, n
 
 #[test]
 fn generator_rejects_invalid_inputs() {
-    let (circuit, proof, _) = common::load();
-    let config = common::prover_config();
-    let (_, nodes) = common::setup_frontier();
-    let params = common::format_params();
+    let mode = SoundnessMode::PessimisticConjecture;
+    let (circuit, proof, _) = common::load(mode);
+    let config = common::prover_config(mode);
+    let (_, nodes) = common::setup_frontier(mode);
+    let params = common::format_params(mode);
     let generate = |circuit: &common::Circuit,
                     config: &prover::gkr::prover_config::ProverConfig,
                     top: &[u32]| {
@@ -259,7 +314,7 @@ fn generator_rejects_invalid_inputs() {
             circuit,
             config,
             &params,
-            common::final_pc(),
+            common::final_pc(mode),
             top,
             &proof.whir_proof.setup_commitment.commitment.cap.cap,
             &nodes,
@@ -305,8 +360,8 @@ fn generator_rejects_invalid_inputs() {
     );
 }
 
-fn write(rel: &str, content: &str) {
-    let p = common::contract_path(rel);
+fn write(mode: SoundnessMode, rel: &str, content: &str) {
+    let p = common::contract_path(mode, rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(&p, content).unwrap();
     eprintln!("wrote {} ({} bytes)", p.display(), content.len());
@@ -315,7 +370,9 @@ fn write(rel: &str, content: &str) {
 #[test]
 #[ignore = "writes committed generated_contracts"]
 fn generate_contracts_into_dir() {
-    for (rel, content) in generated_sources() {
-        write(&rel, &content);
+    for &mode in SoundnessMode::ALL {
+        for (rel, content) in generated_sources(mode) {
+            write(mode, &rel, &content);
+        }
     }
 }

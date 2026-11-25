@@ -267,8 +267,8 @@ mod tests {
     fn compression_and_wrap_rounds_preserve_security_margin() {
         for config in [
             compression_final_config_for_2_22(),
-            compression_config_for_2_23(),
-            l1_wrap::packed_prover_config(),
+            pessimistic_compression_config_for_2_23(),
+            l1_wrap::pessimistic_packed_prover_config(),
         ] {
             assert_every_round_preserves_security_margin(&config);
         }
@@ -277,7 +277,7 @@ mod tests {
     #[test]
     fn l1_wrap_terms_preserve_security_margin() {
         const ACCEPTED_DEFICIT_BITS: f64 = 1e-6;
-        let config = l1_wrap::packed_prover_config();
+        let config = l1_wrap::pessimistic_packed_prover_config();
         let security_bits = SecurityLevel::Sec100.security_bits();
         let target_bits = security_bits as f64;
         let minimum_shift_bits = target_bits - ACCEPTED_DEFICIT_BITS;
@@ -286,7 +286,7 @@ mod tests {
         let schedule = &config.whir_schedule;
         let base = &schedule.base_round;
         let base_message_log2 = config.whir_message_size_log2();
-        let list_ceilings = l1_wrap::LIST_SIZE_CEILINGS;
+        let list_ceilings = l1_wrap::PESSIMISTIC_LIST_SIZE_CEILINGS;
         assert_eq!(list_ceilings.len(), schedule.num_rounds());
         assert_every_round_preserves_security_margin(&config);
 
@@ -354,7 +354,7 @@ mod tests {
 
         let layout = std::fs::File::open(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json",
+            "/../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json",
         )).expect("L1 wrap circuit layout");
         let circuit = serde_json::from_reader(layout).expect("deserialize L1 wrap circuit");
         let columns = pow_bits::committed_base_oracle_columns::<Proth120>(

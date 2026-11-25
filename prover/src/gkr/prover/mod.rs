@@ -34,7 +34,7 @@ use crate::gkr::prover::transcript_utils::{
     commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
 };
 use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
-use crate::gkr::prover_config::{pow_bits, ProverConfig};
+use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRStorage};
 #[cfg(feature = "gkr_self_checks")]
 use crate::gkr::sumcheck::eq_poly::*;
@@ -1037,10 +1037,8 @@ fn prove_configured_with_gkr_merged_precommitted_impl<
 
     let mut seed = <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
 
-    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits::<F, E>(
-        prover_config.security_level.security_bits(),
-        pow_bits::lookup_identity_degree(compiled_circuit),
-    );
+    let lookup_challenges_pow_bits =
+        prover_config.lookup_challenges_pow_bits::<F, E>(compiled_circuit);
     let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
         draw_random_field_els_with_pow::<F, E, TR>(
             &mut seed,
@@ -1311,10 +1309,8 @@ fn prove_configured_with_gkr_impl<
         //    and in the single-chunk mode the external challenges too. They are
         //    gated behind a proof-of-work; commit-before-draw is satisfied by
         //    `commit_initial` above.
-        let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits::<F, E>(
-            prover_config.security_level.security_bits(),
-            pow_bits::lookup_identity_degree(compiled_circuit),
-        );
+        let lookup_challenges_pow_bits =
+            prover_config.lookup_challenges_pow_bits::<F, E>(compiled_circuit);
         let (lookup_challenges_pow_nonce, [lookup_alpha, lookup_additive_part]) =
             match operation_mode {
                 OperationMode::MultipleChunks => {

@@ -68,11 +68,6 @@ impl ProofArtifact {
                 ));
             }
         }
-        // L1 artifacts exist only in PessimisticConjecture: neither an ethproofs request nor
-        // an ethproofs label reaches an L1 verifier or continuation.
-        for mode in [expected, self.soundness_mode] {
-            super::assert_target_mode(self.target, mode);
-        }
         if self.soundness_mode != expected {
             return Err(format!(
                 "SoundnessModeMismatch: expected {expected:?}, artifact is {:?}",
@@ -164,6 +159,8 @@ mod tests {
                     "unified" => (ProofTarget::RecursionUnified, 3),
                     "unrolled" => (ProofTarget::RecursionUnrolled, 2),
                     "unrolled_unified" => (ProofTarget::RecursionUnified, 4),
+                    "compression" => (ProofTarget::Compression, 6),
+                    "l1" => (ProofTarget::L1, 6),
                     _ => unreachable!(),
                 };
                 assert_eq!(artifact.soundness_mode, mode);

@@ -19,7 +19,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let (non_determinism_sender, non_determinism_receiver) = crossbeam_channel::bounded(1);
         let unified_circuit = binary_holder
             .execution_kind
-            .unified_circuit()
+            .unified_circuit_in_mode(self.configuration.soundness_mode)
             .unwrap_or(CircuitType::Unrolled(UnrolledCircuitType::Unified));
         let replayers_count = self.configuration.replay_worker_threads_count;
         let execution_kind = binary_holder.execution_kind;

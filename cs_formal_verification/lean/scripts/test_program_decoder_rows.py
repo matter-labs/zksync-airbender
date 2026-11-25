@@ -103,13 +103,10 @@ class DecoderFixtureInventoryTest(unittest.TestCase):
         repository = Path(__file__).resolve().parents[3]
         verifier_root = repository / 'tools/gkr_verifier/full_statement_verifiers'
         expected_verifiers = []
-        for path in sorted(verifier_root.rglob('fsv_*.elf')):
-            if path.stem in {
-                'fsv_unified_base_layer_sec_100',
-                'fsv_unified_recursion_layer_sec_100_compression_final_wrap_special_opcodes_extension',
-            }:
+        for path in sorted(verifier_root.glob('*/fsv_*.elf')):
+            if path.stem == 'fsv_unified_base_layer_sec_100' or '_wrap_' in path.stem:
                 continue
-            mode = 'pessimistic_conjecture' if path.parent == verifier_root else path.parent.name
+            mode = path.parent.name
             config = 'reduced' if path.name.startswith('fsv_unrolled_') else 'unified'
             expected_verifiers.append((f'{path.stem}_{mode}', config))
 
@@ -153,9 +150,9 @@ class DecoderFixtureInventoryTest(unittest.TestCase):
             for family in (decoder.REDUCED_FAMILIES if config == 'reduced' else ('unified',))
             for cache in ('plain', 'cached')
         }
-        self.assertEqual(len(expected_verifiers), 9)
+        self.assertEqual(len(expected_verifiers), 10)
         self.assertEqual(committed, expected_committed)
-        self.assertEqual(len(committed), 42)
+        self.assertEqual(len(committed), 44)
         with tempfile.TemporaryDirectory() as directory:
             text = Path(directory) / 'multiblock_batch.text'
             text.write_bytes(struct.pack('<I', 0x13))
@@ -166,7 +163,7 @@ class DecoderFixtureInventoryTest(unittest.TestCase):
                 for config, families in [('full', decoder.POOLED_FAMILIES), ('unified', ('unified',))]
                 for family in families for cache in ('plain', 'cached')
             })
-            self.assertEqual(len(small) + len(committed) + len(production), 168)
+            self.assertEqual(len(small) + len(committed) + len(production), 170)
 
 
 class DecoderProcessTest(unittest.TestCase):

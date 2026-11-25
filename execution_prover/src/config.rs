@@ -12,7 +12,7 @@ pub fn assert_profiles_for_circuit(circuit: CircuitType, profiles: &[ProofProfil
         "at least one ProofProfile is required"
     );
     let valid = match circuit {
-        CircuitType::L1Wrap => profiles == [ProofProfile::L1Wrap],
+        CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => profiles == [ProofProfile::L1Wrap],
         CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
             profiles == [ProofProfile::CompressionFinal]
         }
@@ -26,7 +26,7 @@ pub fn assert_profiles_for_circuit(circuit: CircuitType, profiles: &[ProofProfil
 
 /// The config of `circuit_type` under `profile` and `soundness_mode`: `Standard` resolves the selected
 /// mode from the compiled columns, the L1 profiles use their special configs
-/// ([`ProofProfile::prover_config`], Pessimistic only).
+/// ([`ProofProfile::prover_config`]).
 pub fn prover_config_in_mode(
     circuit_type: CircuitType,
     compiled: &GKRCircuitArtifact<BF>,
@@ -48,7 +48,7 @@ pub fn execution_commitment_mode<'a>(
     soundness_mode: SoundnessMode,
     compiled: impl FnOnce(CircuitType) -> &'a GKRCircuitArtifact<BF>,
 ) -> CommitmentMode {
-    match kind.unified_circuit() {
+    match kind.unified_circuit_in_mode(soundness_mode) {
         Some(circuit) => {
             prover_config_in_mode(circuit, compiled(circuit), profile, soundness_mode)
                 .commitment_mode

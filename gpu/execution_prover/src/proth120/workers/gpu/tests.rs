@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::{GpuBackendConfiguration, MemoryPreset};
+use crate::config::GpuBackendConfiguration;
 use crate::upstream::{L1WrapSetup, OperationMode};
 use crate::workers::gpu::gpu_worker;
 use cpu_execution_prover::test_support::{with_l1_wrap_fixture, L1WrapFixture};
@@ -7,6 +7,7 @@ use cpu_execution_prover::CpuExecutionProverConfiguration;
 use crossbeam_channel::unbounded;
 use era_cudart::device::set_device;
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
+use execution_prover::config::SoundnessMode;
 use execution_prover::messages::{L1WrapProofRequest, SetupInitializationRequest, WorkRequest};
 use execution_prover::setup::CanonicalCircuitSetup;
 use execution_prover_model::trace::ChunkedTraceHolder;
@@ -14,6 +15,7 @@ use fft::GoodAllocator;
 use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_exact};
 use full_statement_verifier::program_proof::ProgramProof;
 use gpu_circuit_prover::proth120::L1Proof;
+use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -40,25 +42,18 @@ struct L1Artifact {
     l1: Bundle,
 }
 
-fn read_reference<T: DeserializeOwned>(chain: &str) -> T {
-    proof_fixtures::read_file(proof_fixtures::chain_artifact(
-        "pessimistic_conjecture",
-        chain,
-    ))
+fn read_reference<T: DeserializeOwned>(mode: SoundnessMode, chain: &str) -> T {
+    proof_fixtures::read_file(proof_fixtures::chain_artifact(mode.file_suffix(), chain))
 }
 
-fn wrap_program() -> (Vec<u32>, Vec<u32>) {
+fn wrap_program(mode: SoundnessMode) -> (Vec<u32>, Vec<u32>) {
     let dir = std::env::var_os("FSV_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../tools/gkr_verifier/full_statement_verifiers")
         });
-    load_fsv_exact(
-        &dir,
-        &FsvDescriptor::compression(FsvProfile::CompressionFinalWrap),
-    )
-    .into_words()
+    load_fsv_exact(&dir, &FsvDescriptor::compression(mode, FsvProfile::L1Wrap)).into_words()
 }
 
 fn pinned_copy<T: Copy, B: GoodAllocator>(
@@ -95,14 +90,18 @@ fn clone_setup(setup: &L1WrapSetup) -> L1WrapSetup {
     }
 }
 
-fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) {
+fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle, mode: SoundnessMode) {
     const WRAPS: u64 = 3;
-    assert_eq!(fixture.circuit_type, CircuitType::L1Wrap);
+    let circuit_type = match mode {
+        SoundnessMode::PessimisticConjecture => CircuitType::L1Wrap21,
+        SoundnessMode::EthproofsSoundnessCalc => CircuitType::L1Wrap22,
+    };
+    assert_eq!(fixture.circuit_type, circuit_type);
     set_device(0).unwrap();
     let precomputations = CircuitPrecomputations::from_canonical(
-        CircuitType::L1Wrap,
+        circuit_type,
         CanonicalCircuitSetup::L1Wrap(clone_setup(fixture.setup)),
-        execution_prover::config::SoundnessMode::PessimisticConjecture,
+        mode,
         &[ProofProfile::L1Wrap],
     );
     let inits_and_teardowns = InitsAndTeardownsTraceHost {
@@ -117,7 +116,7 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) {
         .send(Some(WorkRequest::SetupInitialization(
             SetupInitializationRequest {
                 batch_id: 0,
-                circuit_type: CircuitType::L1Wrap,
+                circuit_type,
                 sequence_id: 0,
                 precomputations: precomputations.clone(),
             },
@@ -127,7 +126,7 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) {
         requests_sender
             .send(Some(WorkRequest::L1WrapProof(L1WrapProofRequest {
                 batch_id,
-                circuit_type: CircuitType::L1Wrap,
+                circuit_type,
                 precomputations: precomputations.clone(),
                 inits_and_teardowns: inits_and_teardowns.clone(),
                 tracing_data: tracing_data.clone(),
@@ -140,11 +139,7 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) {
     drop(requests_sender);
     let (initialized_sender, _initialized) = unbounded();
     let (results_sender, results) = unbounded();
-    let config = GpuBackendConfiguration {
-        memory_preset: MemoryPreset::GiB30,
-        ..Default::default()
-    }
-    .context_config();
+    let config = GpuBackendConfiguration::default().context_config();
     gpu_worker(0, config, initialized_sender, requests, results_sender).unwrap();
     let mut proven = Vec::new();
     for result in results.try_iter().flatten() {
@@ -172,18 +167,28 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) {
 
 #[test]
 #[ignore = "proves the 2^21 L1 wrap three times on the GPU"]
-fn l1_wrap_followed_worker_parity() {
+fn l1_wrap_followed_worker_pessimistic_parity() {
+    followed_worker_parity(SoundnessMode::PessimisticConjecture);
+}
+
+#[test]
+#[ignore = "proves the 2^22 L1 wrap three times on the GPU"]
+fn l1_wrap_followed_worker_ethproofs_parity() {
+    followed_worker_parity(SoundnessMode::EthproofsSoundnessCalc);
+}
+
+fn followed_worker_parity(mode: SoundnessMode) {
     let _ = env_logger::builder()
         .is_test(true)
         .format_timestamp_millis()
         .try_init();
-    let compression: CompressionArtifact = read_reference("compression");
+    let compression: CompressionArtifact = read_reference(mode, "compression");
     assert!(
         compression.schema_version == 5 && compression.target == "Compression",
         "L1 reference last-compression checkpoint must be a schema-5 Compression artifact"
     );
-    let L1Artifact { l1: bundle } = read_reference("l1");
-    let (bin, text) = wrap_program();
+    let L1Artifact { l1: bundle } = read_reference(mode, "l1");
+    let (bin, text) = wrap_program(mode);
     let nd_words = build_unified_stream(
         &compression.setups,
         &compression.proof,
@@ -191,11 +196,11 @@ fn l1_wrap_followed_worker_parity() {
     );
     drop(compression);
     with_l1_wrap_fixture(
-        CpuExecutionProverConfiguration::default(),
+        CpuExecutionProverConfiguration::for_mode(mode),
         bin,
         text,
         nd_words,
         None,
-        move |fixture| run_followed_worker(&fixture, &bundle),
+        move |fixture| run_followed_worker(&fixture, &bundle, mode),
     );
 }

@@ -30,8 +30,7 @@ pub static CIRCUITS: LazyLock<Vec<CircuitData>> =
     LazyLock::new(|| gkr_fixture_circuits!(make_circuits));
 
 /// The canonical fixed-workload 2^23 Compression circuit fixture.
-/// It has a fixture only in pessimistic-conjecture mode and is outside the
-/// Standard-profile circuit catalogue.
+/// It is outside the Standard-profile circuit catalogue.
 pub static COMPRESSION: LazyLock<CircuitData> = LazyLock::new(|| {
     CircuitData::new(
         "compression",
@@ -130,12 +129,12 @@ impl CircuitData {
     ) -> &ProverConfig {
         self.prover_configs_cache[level as usize][mode_index(mode)].get_or_init(|| {
             if self.name == "compression" {
-                assert_eq!(mode, SoundnessMode::PessimisticConjecture);
-                let config =
-                    prover::gkr::prover_config::example_configs::compression_config_for_2_23();
+                let trace_len = self.compiled_circuit().trace_len;
+                let config = prover::gkr::prover_config::ProofProfile::Compression
+                    .prover_config(trace_len.ilog2() as usize, mode);
                 assert_eq!(
                     1usize << config.trace_len_log2,
-                    self.compiled_circuit().trace_len,
+                    trace_len,
                     "Compression profile trace length differs from the compiled circuit"
                 );
                 return config;

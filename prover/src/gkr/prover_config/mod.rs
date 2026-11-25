@@ -17,7 +17,7 @@ pub enum ProofProfile {
     /// The 2^22 compression (CompressionFinal profile).
     CompressionFinal,
     L1Wrap,
-    /// The 2^23 compression at base LDE 4 (Compression profile).
+    /// The 2^23 compression (Compression profile).
     Compression,
 }
 
@@ -28,52 +28,55 @@ impl ProofProfile {
         matches!(self, Self::CompressionFinal | Self::Compression)
     }
 
-    /// The named special-config profile this proof profile is selected under.
-    pub fn config_profile(self) -> crate::definitions::ProverConfigProfile {
-        use crate::definitions::ProverConfigProfile;
-        match self {
-            Self::Standard => ProverConfigProfile::Standard,
-            Self::CompressionFinal | Self::Compression => ProverConfigProfile::Compression,
-            Self::L1Wrap => ProverConfigProfile::EvmProductionPacked,
-        }
-    }
-
-    /// The special config of an L1 profile under `soundness_mode`. The L1 profiles exist only under
-    /// [`SoundnessMode::PessimisticConjecture`] (no Ethproofs compression, wrap or EVM config
-    /// exists): another mode fails
-    /// [`ProverConfigProfile::assert_supports`](crate::definitions::ProverConfigProfile::assert_supports).
+    /// The special config of a compression or L1 wrap profile under `soundness_mode`.
+    /// The [`SoundnessMode::EthproofsSoundnessCalc`] compression chain has no `CompressionFinal`.
     /// `Standard` resolves through the circuit's own config.
     pub fn prover_config(
         self,
         trace_len_log2: usize,
         soundness_mode: crate::definitions::SoundnessMode,
     ) -> ProverConfig {
-        self.config_profile().assert_supports(soundness_mode);
-        let config = match self {
-            Self::Standard => {
+        use crate::definitions::SoundnessMode;
+        let config = match (self, soundness_mode) {
+            (Self::Standard, _) => {
                 panic!("ProofProfile::Standard resolves through the circuit's own prover_config")
             }
-            Self::CompressionFinal => {
+            (Self::CompressionFinal, SoundnessMode::PessimisticConjecture) => {
                 assert_eq!(
                     trace_len_log2, 22,
                     "ProofProfile::CompressionFinal requires the 2^22 unified circuit"
                 );
                 example_configs::compression_final_config_for_2_22()
             }
-            Self::Compression => {
+            (Self::CompressionFinal, SoundnessMode::EthproofsSoundnessCalc) => {
+                panic!("ProofProfile::CompressionFinal does not exist in the EthproofsSoundnessCalc compression chain")
+            }
+            (Self::Compression, _) => {
                 assert_eq!(
                     trace_len_log2, 23,
                     "ProofProfile::Compression requires the 2^23 unified circuit"
                 );
-                example_configs::compression_config_for_2_23()
+                match soundness_mode {
+                    SoundnessMode::PessimisticConjecture => {
+                        example_configs::pessimistic_compression_config_for_2_23()
+                    }
+                    SoundnessMode::EthproofsSoundnessCalc => {
+                        example_configs::ethproofs_compression_config_for_2_23()
+                    }
+                }
             }
-            Self::L1Wrap => {
+            (Self::L1Wrap, mode) => {
+                use example_configs::l1_wrap;
+                let config = l1_wrap::packed_prover_config_in_mode(mode);
                 assert_eq!(
-                    trace_len_log2,
-                    example_configs::l1_wrap::TRACE_LEN_LOG2,
-                    "ProofProfile::L1Wrap requires the 2^21 Proth120 unified circuit"
+                    trace_len_log2, config.trace_len_log2,
+                    "L1Wrap trace length for {mode:?}"
                 );
-                example_configs::l1_wrap::packed_prover_config()
+                assert!(
+                    config.lookup_challenges_pow_floor.is_none(),
+                    "L1 wrap does not support a lookup PoW floor"
+                );
+                config
             }
         };
         assert_eq!(
@@ -328,10 +331,9 @@ pub struct ProverConfig {
     // we do not expect any challenges for sumcheck, as it's soundness
     // error is very small
     pub sumcheck_explicit_output_size_log_2: usize,
-    // The lookup-challenge proof-of-work bit count is derived per-circuit from
-    // `security_level` via `pow_bits`; the WHIR-side PoW knobs live in the
-    // schedule.
     pub security_level: SecurityLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lookup_challenges_pow_floor: Option<u32>,
     /// The whole WHIR geometry: the base round ([`WhirBaseRoundSchedule`]:
     /// the base oracles' LDE factor, physical packing, round-0 fold — `0` is
     /// virtual packing with one value per column per leaf — and base query
@@ -356,6 +358,17 @@ pub struct ProverConfig {
 }
 
 impl ProverConfig {
+    pub fn lookup_challenges_pow_bits<F: field::PrimeField, E: field::FieldExtension<F>>(
+        &self,
+        circuit: &cs::gkr_compiler::GKRCircuitArtifact<F>,
+    ) -> u32 {
+        pow_bits::lookup_challenges_pow_bits::<F, E>(
+            self.security_level.security_bits(),
+            pow_bits::lookup_identity_degree(circuit),
+        )
+        .max(self.lookup_challenges_pow_floor.unwrap_or(0))
+    }
+
     /// A bare config for WHIR-only drivers and tests: a
     /// `SeparateMemoryAndWitness` commitment of `2^trace_len_log2` columns
     /// under `whir_schedule` (the base LDE factor, cap, packing and round-0
@@ -372,6 +385,7 @@ impl ProverConfig {
             sumcheck_explicit_output_size_log_2:
                 crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
             security_level,
+            lookup_challenges_pow_floor: None,
             whir_schedule,
             same_size_sumcheck_schedule: naive_same_size_schedule(),
             dimension_reducing_sumcheck_schedule: Default::default(),
@@ -889,8 +903,8 @@ mod test {
         }
         for config in [
             example_configs::compression_final_config_for_2_22(),
-            example_configs::compression_config_for_2_23(),
-            example_configs::l1_wrap::packed_prover_config(),
+            example_configs::pessimistic_compression_config_for_2_23(),
+            example_configs::l1_wrap::pessimistic_packed_prover_config(),
         ] {
             config.validate_for_whir_message_size(config.whir_message_size_log2());
         }

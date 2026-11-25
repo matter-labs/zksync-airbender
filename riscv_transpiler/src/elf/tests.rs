@@ -568,29 +568,31 @@ fn legacy_binaries_reject_text_that_is_not_a_prefix() {
 
 #[test]
 fn wrap_fsv_requires_wrap_rom_geometry() {
-    let path = repo_root().join(
-        "tools/gkr_verifier/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_compression_final_wrap_special_opcodes_extension.elf",
-    );
-    let bytes = std::fs::read(path).unwrap();
-    let image = read_elf_with_rom(&bytes, ElfReadMode::Legacy, L1_WRAP_ROM).unwrap();
-    assert_eq!(image.rom, L1_WRAP_ROM);
-    assert_eq!(image.symbols["_rom_size"] as usize, L1_WRAP_ROM.byte_size());
-    assert_eq!(
-        image.flattened_binary.as_ref().unwrap().len(),
-        L1_WRAP_ROM.word_size()
-    );
-    assert_eq!(image.padded_text_words().len(), L1_WRAP_ROM.word_size());
-    let error = read_elf_with_rom(&bytes, ElfReadMode::Legacy, REGULAR_ROM).unwrap_err();
-    assert!(
-        matches!(error, ElfReadError::Layout(ref message) if message.contains("_rom_size") && message.contains("0x80000") && message.contains("0x400000")),
-        "wrong ROM must reject the linker geometry: {error}"
-    );
+    for path in [
+        "tools/gkr_verifier/full_statement_verifiers/pessimistic_conjecture/fsv_unified_recursion_layer_sec_100_compression_final_wrap_special_opcodes_extension.elf",
+        "tools/gkr_verifier/full_statement_verifiers/ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_compression_wrap_special_opcodes_extension.elf",
+    ] {
+        let bytes = std::fs::read(repo_root().join(path)).unwrap();
+        let image = read_elf_with_rom(&bytes, ElfReadMode::Legacy, L1_WRAP_ROM).unwrap();
+        assert_eq!(image.rom, L1_WRAP_ROM);
+        assert_eq!(image.symbols["_rom_size"] as usize, L1_WRAP_ROM.byte_size());
+        assert_eq!(
+            image.flattened_binary.as_ref().unwrap().len(),
+            L1_WRAP_ROM.word_size()
+        );
+        assert_eq!(image.padded_text_words().len(), L1_WRAP_ROM.word_size());
+        let error = read_elf_with_rom(&bytes, ElfReadMode::Legacy, REGULAR_ROM).unwrap_err();
+        assert!(
+            matches!(error, ElfReadError::Layout(ref message) if message.contains("_rom_size") && message.contains("0x80000") && message.contains("0x400000")),
+            "wrong ROM must reject the linker geometry for {path}: {error}"
+        );
+    }
 }
 
 #[test]
 fn explicit_regular_rom_preserves_fsv_image() {
     let path = repo_root().join(
-        "tools/gkr_verifier/full_statement_verifiers/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf",
+        "tools/gkr_verifier/full_statement_verifiers/pessimistic_conjecture/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf",
     );
     let bytes = std::fs::read(path).unwrap();
     for mode in [ElfReadMode::Legacy, ElfReadMode::Strict] {

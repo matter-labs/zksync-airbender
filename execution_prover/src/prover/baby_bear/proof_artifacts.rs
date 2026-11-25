@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::SoundnessMode;
 
 /// `(pow_challenge, external_challenges, proof_caps)`, as derived from a
 /// completed memory commitment and consumed by `prove_inner`.
@@ -68,8 +69,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     inits_and_teardowns_memory_caps.is_empty(),
                     "unified execution must not produce separate inits-and-teardowns memory caps"
                 );
-                let CircuitType::Unrolled(unified_circuit_type) =
-                    execution_kind.unified_circuit().unwrap()
+                let CircuitType::Unrolled(unified_circuit_type) = execution_kind
+                    .unified_circuit_in_mode(self.configuration.soundness_mode)
+                    .unwrap()
                 else {
                     unreachable!()
                 };
@@ -126,8 +128,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let mut proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>> =
             BTreeMap::new();
         for (family_idx, per_seq) in circuit_families_memory_caps.iter() {
-            let circuit_type =
-                unrolled_circuit_type_from_family_idx(*family_idx, machine_type, execution_kind);
+            let circuit_type = unrolled_circuit_type_from_family_idx(
+                *family_idx,
+                machine_type,
+                execution_kind,
+                self.configuration.soundness_mode,
+            );
             for (sequence_id, caps) in per_seq.iter().enumerate() {
                 proof_caps.insert(
                     (CircuitType::Unrolled(circuit_type), sequence_id),
@@ -362,6 +368,7 @@ fn unrolled_circuit_type_from_family_idx(
     family_idx: u8,
     machine_type: MachineType,
     execution_kind: ExecutionKind,
+    soundness_mode: SoundnessMode,
 ) -> UnrolledCircuitType {
     for ct in UnrolledMemoryCircuitType::get_circuit_types_for_machine_type(machine_type) {
         if ct.get_family_idx() == family_idx {
@@ -376,7 +383,9 @@ fn unrolled_circuit_type_from_family_idx(
     if family_idx == UnrolledCircuitType::Unified.get_family_idx() {
         // The 2^23 and 2^22 unified circuits share the family index; the
         // execution kind selects the geometry.
-        if let Some(CircuitType::Unrolled(unified)) = execution_kind.unified_circuit() {
+        if let Some(CircuitType::Unrolled(unified)) =
+            execution_kind.unified_circuit_in_mode(soundness_mode)
+        {
             return unified;
         }
     }
@@ -399,6 +408,7 @@ mod tests {
                 UnrolledCircuitType::Unified.get_family_idx(),
                 MachineType::Reduced,
                 kind,
+                SoundnessMode::DEFAULT,
             );
             assert_eq!(ct, expected);
         }

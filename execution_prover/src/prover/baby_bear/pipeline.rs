@@ -105,7 +105,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         };
         acc.partial_tree_allocator_requests = (!proving
             && cache.is_some()
-            && execution_kind.unified_circuit().is_some()
+            && execution_kind
+                .unified_circuit_in_mode(self.configuration.soundness_mode)
+                .is_some()
             && self.backend.persists_memory_partial_trees(profile))
         .then(|| {
             let (requests, sequence_ids) = unbounded();
@@ -143,7 +145,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let data = InitsAndTeardownsData {
                 circuit_type: binary_holder
                     .execution_kind
-                    .unified_circuit()
+                    .unified_circuit_in_mode(self.configuration.soundness_mode)
                     .expect("trivial unified inits-and-teardowns belong to a unified execution"),
                 sequence_id,
                 inits_and_teardowns: None,

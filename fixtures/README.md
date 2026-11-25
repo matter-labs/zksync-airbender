@@ -1,12 +1,12 @@
 # Canonical circuit proofs
 
-The Standard canonical set contains one Sec100 proof for each of 14 circuits in each
-soundness mode: `PessimisticConjecture` and `EthproofsSoundnessCalc`.
+The Standard canonical set covers its circuits in both soundness modes:
+`PessimisticConjecture` and `EthproofsSoundnessCalc`.
 Proofs live in `circuits/<mode>/<circuit>.json.zlib` under this directory.
 The mode directories are `pessimistic_conjecture` and `ethproofs_soundcalc`.
 G-function has no canonical fixture. Legacy `keccak_special5` remains covered.
-Pessimistic-conjecture mode also has the canonical special-profile fixtures
-`compression.json.zlib` and `compression_final.json.zlib`. The `circuits` stage
+Both modes also have the canonical `compression.json.zlib` special-profile fixture;
+only Pessimistic-conjecture has `compression_final.json.zlib`. The `circuits` stage
 produces them from the shared fixed workload.
 
 The producer recipe runs from the repository root:
@@ -20,10 +20,8 @@ fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage base_unifie
 Modes are `pessimistic_conjecture` and `ethproofs_soundcalc`. Stages are
 `circuits`, `base_unified`, `unrolled`, `compression`, and `l1`. Selecting
 `base_unified` or `unrolled` requires `--check`; without a stage, write mode
-refreshes a mode's circuits and whole chain in order. The L1 stages can also be
-written individually and select `pessimistic_conjecture` by default; explicitly
-requesting them in `ethproofs_soundcalc` is rejected. `--mode` may select one
-mode in either operation.
+refreshes a mode's circuits and whole chain in order. The `compression` and
+`l1` stages can be written individually. `--mode` may select one mode.
 
 The two canonical producer tests share one body and fix their mode in code:
 `tests::gkr::canonical_proofs::regenerate_canonical_circuit_proofs_<mode>`.
@@ -79,14 +77,14 @@ complete compressed files with the committed outputs. Every child reads its
 committed parent, including when several stages are checked in one invocation.
 A stale parent's own stage fails even when a dependent stage passes. Failed
 checks retain their temporary outputs and logs and print their location.
-CPU CI checks canonical circuits, Standard chains and the pessimistic-only
-compression chain in `fixture_currency`.
+CPU CI selects circuit and chain currency stages through the `fixture_currency`
+matrix.
 
 For prebuilt executables, set `FIXTURE_CLI`, `FIXTURE_CANONICAL_PRODUCER` and
 `FIXTURE_CODEC`; the script builds any that are unset with Cargo.
 With `FIXTURE_TRUSTED_PARAMS` set to a directory, verification reuses the records
-kept there and computes a missing file once. Pessimistic records include
-compression; other modes stop at `recursion-unified`. Without the cache,
+kept there and computes a missing file once. Records include compression in
+both modes. Without the cache,
 verification derives parameters from the program. The soundness smoke checks
 compute and pass their own records.
 
@@ -99,12 +97,11 @@ root.
 
 ## Chain artifacts
 
-Each mode has four standard schema 5 CLI artifacts under `chains/<mode>/`.
-`pessimistic_conjecture` additionally has `compression` and `l1`; ethproofs refuses
-both L1 targets. They use the tracked `examples/basic_fibonacci/app.bin`, CPU
-backend on every available core, and Compression guests for unrolled, bridge,
-and final layers. Every artifact has `program_cycles = 97`; the recipe natively
-verifies its proof and rejects absolute paths inside `Variable at ...` labels.
+Each mode has Standard CLI artifacts and `compression` and `l1` artifacts
+under `chains/<mode>/`. The CLI supports the L1 wrap target in both modes.
+The fixtures use the tracked `examples/basic_fibonacci/app.bin` and have `program_cycles = 97`.
+The recipe verifies its outputs and rejects absolute paths inside
+`Variable at ...` labels.
 The optional `l1` bundle is serialized only when present, so the eight standard
 chain artifacts have no `l1` field.
 
@@ -114,8 +111,9 @@ chain artifacts have no `l1` field.
 | `unified` | `base` | 0 | 3 |
 | `unrolled` | `base` | 1 | 2 |
 | `unrolled_unified` | `unrolled` | 0 | 4 |
-| `compression` (pessimistic only) | `unified` | fixed compression schedule | 6 |
-| `l1` (pessimistic only) | `compression` | wrap; same CompressionFinal sidecar | 6 |
+| `compression` | `unified` | mode-specific compression schedule | 6 |
+| `l1` (pessimistic) | `compression` | wrap with the CompressionFinal sidecar | 6 |
+| `l1` (Ethproofs) | `compression` | wrap with the terminal Compression sidecar | 6 |
 
 The `prover_pipeline` test `committed_chain_encoding` checks each committed
 artifact's target, chain entries and `program_cycles`.
@@ -132,29 +130,30 @@ existing artifacts.
 | `chains/<mode>/unified` | CLI verification, currency, soundness smoke checks, typed encoding; unified FSV acceptance and rejection |
 | `chains/<mode>/unrolled` | CLI verification, currency, typed encoding; census recursion guest fit and gates |
 | `chains/<mode>/unrolled_unified` | CLI verification, currency, typed encoding; unified FSV acceptance and rejection |
-| `chains/pessimistic_conjecture/compression` | native CLI verification, compression tampering and trusted-chain tests; GPU L1 currency and continuation tests |
-| `chains/pessimistic_conjecture/l1` | CLI envelope and native CompressionFinal-sidecar verification; wrap/frontier tests; EVM contract and calldata producers; GPU wrap parity |
+| `chains/<mode>/compression` | native CLI verification, compression currency and GPU parity |
+| `chains/<mode>/l1` | CLI envelope and compression-sidecar verification, setup frontier and EVM producers, Forge controls and GPU wrap parity |
 
 ## L1 production and EVM checks
 
-The pessimistic chain fixtures are `chains/pessimistic_conjecture/compression.json.zlib`
-and `l1.json.zlib`. The compression recipe reads the committed `unified.json.zlib`;
-the L1 recipe reads the committed compression chain. The L1 artifact retains the
-CompressionFinal sidecar and adds its Proth120 proof and operation-mode bundle.
+For each mode, the compression recipe reads the committed `unified.json.zlib`
+and the L1 recipe reads the committed `compression.json.zlib`. The L1 artifact
+retains the compression sidecar and adds the Proth120 proof and operation mode.
 
 Regenerate through the CLI after guest, circuit, config or format changes.
 Use default CLI features, including `deterministic_pow`, from the repository root:
 
 ```bash
 export CARGO_BUILD_JOBS=12 RUST_MIN_STACK=1073741824
-fixtures/regenerate.sh --mode pessimistic_conjecture --stage compression
-fixtures/regenerate.sh --mode pessimistic_conjecture --stage l1
-git status --porcelain -- fixtures/chains/pessimistic_conjecture
+for mode in pessimistic_conjecture ethproofs_soundcalc; do
+    fixtures/regenerate.sh --mode "$mode" --stage compression
+    fixtures/regenerate.sh --mode "$mode" --stage l1
+done
+git status --porcelain -- fixtures/chains
 ```
 
-CPU CI checks compression currency. CPU wrap production is available for local
-regeneration. CLI verification of the L1 artifact checks its envelope, chain and
-native CompressionFinal sidecar; the EVM verifier checks the Proth120 proof.
+CPU CI checks compression currency. GPU CI checks both compression and L1
+currency in both modes. CLI verification checks the L1 envelope, chain and
+compression sidecar. The generated EVM verifier checks the Proth120 proof.
 The Standard stages use fixed Compression Blake modes. The unrolled-to-unified
 switch threshold is the library default unless `RECURSION_UNIFIED_SWITCH_CYCLES`
 is set; the recipe does not override it.
@@ -176,21 +175,20 @@ git status --porcelain -- verifier_evm/generated_contracts verifier_evm/debug_da
 verifier_evm/generated_contracts/run_merged.sh
 ```
 
-The [EVM harness README](../verifier_evm/generated_contracts/l1_wrap/README.md)
+The [EVM harness README](../verifier_evm/generated_contracts/README.md)
 describes deployment and calldata.
 
 ## GPU checks
 
-The GPU canonical matrix checks every registered circuit fixture against the
-same committed bytes, including `compression` and `compression_final` in
-pessimistic mode. The inventory test binds the matrix to the mode-specific
-canonical registry.
+The GPU canonical matrix covers Standard and `compression` circuit fixtures in
+both modes, plus the Pessimistic `compression_final` fixture. The inventory test
+binds the matrix to the mode-specific canonical registry.
 
-The GPU workflow's `chains` shard checks Standard chains in both modes and
-the pessimistic `compression` and `l1` chains through the shared recipe.
+The GPU workflow's `chains` shard checks Standard, `compression` and `l1`
+chains in both modes through the shared recipe.
 Before proving, it compares CPU and GPU trusted records byte for byte; GPU
 record construction logs the context's actual peak allocation per record.
-The shared cache includes compression records and no L1 wrap record.
+The shared cache includes compression records for both modes and no L1 wrap record.
 
 For local currency checks, build the GPU CLI and codec first, set
 `FIXTURE_CLI` and `FIXTURE_CODEC` to those executables, then run each recipe
@@ -199,12 +197,17 @@ through `.agents/bin/with_gpu_lock.sh`, which holds the shared GPU lock
 
 ```bash
 export FIXTURE_BACKEND=gpu
+.agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode ethproofs_soundcalc --stage compression
 .agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage compression
 .agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage l1
+.agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode ethproofs_soundcalc --stage l1
 ```
 
 Builds and CPU verification do not take the GPU lock. The currency recipe
 compares the complete compressed files.
+
+`AB_PESSIMISTIC_L1_WHIR_SCHEDULE` selects a JSON WHIR schedule for local
+pessimistic L1 wrap runs.
 
 ## Census tables
 

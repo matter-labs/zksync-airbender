@@ -64,8 +64,34 @@ mod tests {
     use circuit_common::{
         prover_config_file_name, prover_config_notes_file_name, SecurityLevel, SoundnessMode,
     };
-    use prover::gkr::prover_config::ProverConfig;
+    use prover::gkr::prover_config::{example_configs::l1_wrap, pow_bits, ProverConfig};
+    use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTES;
+    use std::path::{Path, PathBuf};
     use verifier_common::test_circuits::CIRCUITS;
+
+    fn ethproofs_l1_wrap_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../unrolled_circuits/unified_reduced_machine_proth120_2_22")
+    }
+
+    fn assert_current(
+        root: &Path,
+        level: SecurityLevel,
+        mode: SoundnessMode,
+        config: ProverConfig,
+    ) {
+        let path = root.join(prover_config_file_name(level, mode));
+        let on_disk: ProverConfig = serde_json::from_reader(
+            std::fs::File::open(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())),
+        )
+        .unwrap();
+        assert_eq!(
+            on_disk,
+            config,
+            "{} is stale: regenerate the prover config fixtures",
+            path.display()
+        );
+    }
 
     /// Every serialized config equals the one its circuit's geometry derives
     /// from the compiled circuit (and the notes match); otherwise run
@@ -86,17 +112,11 @@ mod tests {
                     circuit.name
                 );
                 for &mode in SoundnessMode::ALL {
-                    let path = root.join(prover_config_file_name(level, mode));
-                    let on_disk: ProverConfig = serde_json::from_reader(
-                        std::fs::File::open(&path)
-                            .unwrap_or_else(|e| panic!("{}: {e}", path.display())),
-                    )
-                    .unwrap();
-                    assert_eq!(
-                        on_disk,
+                    assert_current(
+                        &root,
+                        level,
+                        mode,
                         geometry.prover_config(&compiled, level, mode),
-                        "{} is stale: regenerate the prover config fixtures",
-                        path.display()
                     );
                     let notes_path = root.join(prover_config_notes_file_name(level, mode));
                     match geometry.prover_config_notes(&compiled, level, mode) {
@@ -116,6 +136,27 @@ mod tests {
                 }
             }
         }
+        assert_current(
+            &ethproofs_l1_wrap_root(),
+            SecurityLevel::Sec100,
+            SoundnessMode::EthproofsSoundnessCalc,
+            l1_wrap::ethproofs_packed_prover_config(),
+        );
+        let layout_2_22: prover::cs::gkr_compiler::GKRCircuitArtifact<prover::field::Proth120> =
+            serde_json::from_str(include_str!(
+                "../../unrolled_circuits/unified_reduced_machine_proth120_2_22/generated/layout.json"
+            ))
+            .expect("embedded 2^22 Proth120 unified layout");
+        assert_eq!(
+            pow_bits::committed_base_oracle_columns(&layout_2_22, l1_wrap::PACK_LOG2, true),
+            14,
+            "Ethproofs L1 wrap certificate batch width"
+        );
+        assert_eq!(
+            KECCAK256_MERKLE_DIGEST_BYTES * 8,
+            200,
+            "Ethproofs L1 wrap certificate hash size"
+        );
     }
 
     /// Rewrite every circuit's config (and notes) files from its geometry.
@@ -130,5 +171,11 @@ mod tests {
                 &geometry_of(circuit.name),
             );
         }
+        circuit_common::save_prover_config_in(
+            &ethproofs_l1_wrap_root(),
+            SecurityLevel::Sec100,
+            SoundnessMode::EthproofsSoundnessCalc,
+            &l1_wrap::ethproofs_packed_prover_config(),
+        );
     }
 }

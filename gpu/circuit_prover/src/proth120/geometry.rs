@@ -197,8 +197,8 @@ pub(crate) mod cpu_tests {
 
     pub(crate) fn committed_layout(circuit_type: CircuitType) -> GKRCircuitArtifact<Proth120> {
         let json = match circuit_type {
-            CircuitType::L1Wrap => include_str!(
-                "../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
+            CircuitType::L1Wrap21 => include_str!(
+                "../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json"
             ),
             other => panic!("{other:?} has no committed Proth120 layout"),
         };
@@ -237,7 +237,7 @@ pub(crate) mod cpu_tests {
 
     #[test]
     fn cpu_l1_wrap_geometry_accepts_large_query_count_and_digest_pow() {
-        let wrap = CircuitType::L1Wrap;
+        let wrap = CircuitType::L1Wrap21;
         let circuit = committed_layout(wrap);
         let mut config = ProofProfile::L1Wrap.prover_config(
             wrap.get_domain_size_log2() as usize,
@@ -270,7 +270,7 @@ pub(crate) mod cpu_tests {
 
     #[test]
     fn cpu_l1_wrap_geometry_rejects_mismatch() {
-        let wrap21 = CircuitType::L1Wrap;
+        let wrap21 = CircuitType::L1Wrap21;
         let circuit = committed_layout(wrap21);
         let config = ProofProfile::L1Wrap.prover_config(
             wrap21.get_domain_size_log2() as usize,
@@ -291,7 +291,7 @@ pub(crate) mod cpu_tests {
             || {
                 L1WrapGeometry::new(wrap21, &config, &long_circuit, &setup);
             },
-            "L1Wrap requires a 2^21-row artifact",
+            "L1Wrap21 requires a 2^21-row artifact",
         );
         let mut long_config = config.clone();
         long_config.trace_len_log2 = 22;
@@ -299,7 +299,7 @@ pub(crate) mod cpu_tests {
             || {
                 L1WrapGeometry::new(wrap21, &long_config, &circuit, &setup);
             },
-            "L1Wrap requires a 2^21 prover config",
+            "L1Wrap21 requires a 2^21 prover config",
         );
         let mut unpacked = config.clone();
         unpacked.whir_schedule.base_round.physical_packing_log2 = 0;
@@ -307,7 +307,7 @@ pub(crate) mod cpu_tests {
             || {
                 L1WrapGeometry::new(wrap21, &unpacked, &circuit, &setup);
             },
-            "L1Wrap: unsupported physical_packing_log2",
+            "L1Wrap21: unsupported physical_packing_log2",
         );
         let mut regular_rom = setup_without_evaluations(wrap21, circuit.clone());
         regular_rom.rom = REGULAR_ROM;
@@ -315,7 +315,7 @@ pub(crate) mod cpu_tests {
             || {
                 L1WrapGeometry::new(wrap21, &config, &circuit, &regular_rom);
             },
-            "L1Wrap setup ROM mismatch",
+            "L1Wrap21 setup ROM mismatch",
         );
         let mut short_decoder = setup_without_evaluations(wrap21, circuit.clone());
         short_decoder.decoder_table.pop();
@@ -323,7 +323,7 @@ pub(crate) mod cpu_tests {
             || {
                 L1WrapGeometry::new(wrap21, &config, &circuit, &short_decoder);
             },
-            "L1Wrap decoder table must cover the ROM",
+            "L1Wrap21 decoder table must cover the ROM",
         );
         let mut wrong_rows = setup_without_evaluations(wrap21, circuit.clone());
         wrong_rows.trace_len = 1 << 22;
@@ -331,14 +331,14 @@ pub(crate) mod cpu_tests {
             || {
                 L1WrapGeometry::new(wrap21, &config, &circuit, &wrong_rows);
             },
-            "L1Wrap setup trace length mismatch",
+            "L1Wrap21 setup trace length mismatch",
         );
         let geometry = L1WrapGeometry::new(wrap21, &config, &circuit, &setup);
         let mut wide = circuit.clone();
         wide.scratch_space_size += 1;
         assert_panics(
             || geometry.assert_artifact(&wide),
-            "L1Wrap artifact disagrees with its geometry",
+            "L1Wrap21 artifact disagrees with its geometry",
         );
         let mut split = circuit.clone();
         split
@@ -347,7 +347,7 @@ pub(crate) mod cpu_tests {
             .end += 1;
         assert_panics(
             || geometry.assert_artifact(&split),
-            "L1Wrap requires three contiguous multiplicity columns",
+            "L1Wrap21 requires three contiguous multiplicity columns",
         );
     }
 }

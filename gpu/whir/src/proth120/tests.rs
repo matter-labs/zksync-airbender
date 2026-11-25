@@ -780,7 +780,7 @@ impl HostReplay {
 
 #[test]
 #[ignore = "production L1 WHIR query PoW and transcript draws on GPU"]
-fn pr_transcript_phases_match_reference() {
+fn pr_transcript_phases_match_pessimistic_fixture() {
     #[derive(serde::Deserialize)]
     struct Bundle {
         proof: verifier_evm::seed::Proof,
@@ -797,7 +797,7 @@ fn pr_transcript_phases_match_reference() {
     ));
     let circuit: verifier_evm::seed::Circuit = serde_json::from_reader(
         std::fs::File::open(root.join(
-            "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json",
+            "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json",
         ))
         .unwrap(),
     )
@@ -974,7 +974,7 @@ fn assert_whir_transcript_phases(
         let nonce = download(&nonces[r..r + 1], stream)[0];
         assert_eq!(nonce, whir_nonces[r], "round {r} nonce");
         println!(
-            "pr_transcript_phases_match_reference round {r} pow bits={} nonce={nonce} seconds={seconds:.3}",
+            "pr_transcript_phases_match_pessimistic_fixture round {r} pow bits={} nonce={nonce} seconds={seconds:.3}",
             round.pow_bits
         );
         <Keccak256Transcript as Transcript<PR, PR>>::verify_pow(
