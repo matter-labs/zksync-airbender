@@ -1,6 +1,10 @@
 pub mod l1_wrap {
     use prover::cs::gkr_compiler::GKRCircuitArtifact;
     use prover::field::Proth120;
+    #[cfg(feature = "witness_eval_fn")]
+    use prover::gkr::witness_gen::{
+        column_major_proxy::ColumnMajorWitnessProxy, oracles::UnifiedRiscvCircuitOracle,
+    };
     use prover::worker::Worker;
     use unified_reduced_machine_proth120_2_21::l1_wrap::l1_wrap_setup_from_artifact;
     use unified_reduced_machine_proth120_2_21::L1WrapSetup;
@@ -11,6 +15,15 @@ pub mod l1_wrap {
 
     fn circuit_artifact() -> GKRCircuitArtifact<Proth120> {
         serde_json::from_str(LAYOUT_JSON).expect("embedded 2^22 Proth120 unified layout")
+    }
+
+    /// The witness-eval fn is trace-independent: identical to the 2^21 sibling's
+    /// (`test::witness_eval_fn_matches_sibling` regenerates it and checks).
+    #[cfg(feature = "witness_eval_fn")]
+    pub fn witness_eval_fn(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>, Proth120>,
+    ) {
+        ::unified_reduced_machine_proth120_2_21::l1_wrap::witness_eval_fn(proxy)
     }
 
     pub fn l1_wrap_setup(binary: &[u32], text: &[u32], worker: &Worker) -> L1WrapSetup {

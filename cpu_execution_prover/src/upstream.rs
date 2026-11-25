@@ -44,8 +44,9 @@ pub(crate) use prover::merkle_trees::keccak256_for_everything_tree::Keccak256Mer
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 pub(crate) use prover::transcript::Keccak256Transcript;
 
-pub(crate) use setups::unrolled_circuits::unified_reduced_machine_proth120_2_21::{
-    l1_wrap, L1WrapSetup,
+pub(crate) use setups::unrolled_circuits::unified_reduced_machine_proth120_2_21::L1WrapSetup;
+pub(crate) use setups::unrolled_circuits::{
+    unified_reduced_machine_proth120_2_21, unified_reduced_machine_proth120_2_22,
 };
 pub(crate) use setups::{
     bigint_witness_eval_fn, blake2_g_function_witness_eval_fn,
