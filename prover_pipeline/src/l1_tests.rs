@@ -1,4 +1,7 @@
 use super::*;
+use setups::unrolled_circuits::{
+    unified_reduced_machine_proth120_2_21, unified_reduced_machine_proth120_2_22,
+};
 use std::fs;
 
 fn source() -> ProgramSource {
@@ -78,9 +81,7 @@ fn export_setup_frontier(mode: SoundnessMode) {
             unified_reduced_machine_proth120_2_21::l1_wrap::l1_wrap_setup(&binary, &text, &worker)
         }
         SoundnessMode::EthproofsSoundnessCalc => {
-            setups::unrolled_circuits::unified_reduced_machine_proth120_2_22::l1_wrap::l1_wrap_setup(
-                &binary, &text, &worker,
-            )
+            unified_reduced_machine_proth120_2_22::l1_wrap::l1_wrap_setup(&binary, &text, &worker)
         }
     };
     let config =

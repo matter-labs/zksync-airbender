@@ -3,6 +3,9 @@
 
 use super::*;
 use crate::messages::L1WrapProofRequest;
+use crate::upstream::{
+    unified_reduced_machine_proth120_2_21, unified_reduced_machine_proth120_2_22,
+};
 use crate::workers::simulation::assert_l1_wrap_geometry;
 use crate::OperationMode;
 use ::prover::field::Proth120;
@@ -114,9 +117,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         );
         let setup = match circuit_type {
             CircuitType::L1Wrap21 => unified_reduced_machine_proth120_2_21::l1_wrap::l1_wrap_setup,
-            CircuitType::L1Wrap22 => {
-                setups::unrolled_circuits::unified_reduced_machine_proth120_2_22::l1_wrap::l1_wrap_setup
-            }
+            CircuitType::L1Wrap22 => unified_reduced_machine_proth120_2_22::l1_wrap::l1_wrap_setup,
             other => panic!("{other:?} is not an L1 wrap circuit"),
         }(padded_binary_image, &padded_text_section, &self.worker);
         assert_eq!(setup.trace_len, circuit_type.get_domain_size());

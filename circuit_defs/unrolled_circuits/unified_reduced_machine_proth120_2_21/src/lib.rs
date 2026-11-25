@@ -13,13 +13,10 @@ use prover::cs::gkr_circuits::decoder_trait::{
 use prover::cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
 use prover::cs::gkr_compiler::GKRCircuitArtifact;
 use prover::cs::tables::TableDriver;
-use prover::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 use prover::field::baby_bear::base::BabyBearField;
 use prover::field::Proth120;
 use prover::gkr::prover::setup::GKRSetup;
-use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use prover::gkr::witness_gen::family_circuits::build_unified_table_driver_with_rom;
-use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use std::alloc::Global;
 
@@ -28,6 +25,13 @@ pub const NUM_INIT_AND_TEARDOWN_SETS: usize = 2;
 /// The 2^21 wrap circuit over the 512 KiB wrap ROM.
 pub mod l1_wrap {
     use super::*;
+    #[cfg(feature = "witness_eval_fn")]
+    use prover::{
+        cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet,
+        gkr::witness_gen::{
+            column_major_proxy::ColumnMajorWitnessProxy, oracles::UnifiedRiscvCircuitOracle,
+        },
+    };
 
     pub const TRACE_LEN_LOG2: usize = 21;
     pub const ROM: RomGeometry = L1_WRAP_ROM;
@@ -38,6 +42,7 @@ pub mod l1_wrap {
         serde_json::from_str(LAYOUT_JSON).expect("embedded 2^21 Proth120 unified layout")
     }
 
+    #[cfg(feature = "witness_eval_fn")]
     mod sealed {
         use prover::cs::oracle::Placeholder;
         use prover::cs::witness_placer::*;
@@ -47,6 +52,7 @@ pub mod l1_wrap {
         include!("../generated/witness_generation_fn.rs");
     }
 
+    #[cfg(feature = "witness_eval_fn")]
     pub fn witness_eval_fn(
         proxy: &'_ mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>, Proth120>,
     ) {

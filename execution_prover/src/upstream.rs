@@ -41,6 +41,7 @@ pub(crate) use setups::unrolled_circuits::{
     jump_branch_slt_circuit_setup, load_store_subword_only_circuit_setup,
     load_store_word_only_circuit_setup, mul_div_unsigned_circuit_setup, shift_binary_circuit_setup,
     unified_reduced_machine_2_22_circuit_setup_from_decoder,
-    unified_reduced_machine_circuit_setup_from_decoder,
+    unified_reduced_machine_circuit_setup_from_decoder, unified_reduced_machine_proth120_2_21,
+    unified_reduced_machine_proth120_2_22,
 };
 pub(crate) use setups::{pad_bytecode_for_proving_with_rom, CircuitSetup};

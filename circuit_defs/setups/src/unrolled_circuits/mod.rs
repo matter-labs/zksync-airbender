@@ -13,6 +13,7 @@ pub use ::mul_div_unsigned;
 pub use ::shift_binary;
 pub use ::unified_reduced_machine;
 pub use ::unified_reduced_machine_2_22;
+pub use ::unified_reduced_machine_proth120_2_21;
 pub use ::unified_reduced_machine_proth120_2_22;
 
 mod add_sub_lui_auipc_mop_circuit;
