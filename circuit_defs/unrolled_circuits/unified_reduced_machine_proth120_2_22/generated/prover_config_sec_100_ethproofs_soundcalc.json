@@ -3,6 +3,13 @@
   "cap_size": 32,
   "sumcheck_explicit_output_size_log_2": 2,
   "security_level": "Sec100",
+  "base_soundness": {
+    "Ethproofs": {
+      "JohnsonBound": {
+        "m": 3
+      }
+    }
+  },
   "whir_schedule": {
     "cap_size": 32,
     "base_round": {

@@ -3,6 +3,7 @@
   "cap_size": 16,
   "sumcheck_explicit_output_size_log_2": 4,
   "security_level": "Sec100",
+  "base_soundness": "PessimisticConjecture",
   "whir_schedule": {
     "cap_size": 16,
     "base_round": {
