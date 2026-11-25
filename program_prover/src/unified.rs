@@ -109,8 +109,8 @@ pub(crate) fn replay_unified_circuit<C: Counters>(
 /// inits-and-teardowns, alongside the delegation circuits. It is the unified-mode analogue of
 /// [`crate::unrolled::prove_unrolled_execution_with_replayer_in_mode`]: the same Fiat-Shamir flow
 /// (commit memory trees -> derive challenges -> prove), and it asserts that the global permutation
-/// grand-product closes to ONE. `Compression` and `EvmProductionPacked` are refused: the compression
-/// is proven by the pipeline's `ProofTarget::Compression` route.
+/// grand-product closes to ONE. The pipeline proves compression through
+/// `ProofTarget::Compression`.
 ///
 /// The caller chooses the compute backends: the FFT/tree [`Backend`] (whose
 /// [`Backend::TwiddleSet`]s are built here, once per WHIR message length) and the
@@ -143,7 +143,6 @@ pub fn prove_unified_execution_with_replayer_in_profile<
     BTreeMap<u32, UnrolledCircuitSetupParams>,
 ) {
     use prover::definitions::ProverConfigProfile;
-    profile.assert_supports(soundness_mode);
     match profile {
         ProverConfigProfile::Standard => prove_unified_execution_with_replayer_impl::<B, GB>(
             cycles_bound,
@@ -160,7 +159,7 @@ pub fn prove_unified_execution_with_replayer_in_profile<
             gkr_backend,
         ),
         // The compression is proven by the pipeline's `ProofTarget::Compression` route.
-        ProverConfigProfile::Compression | ProverConfigProfile::EvmProductionPacked => {
+        ProverConfigProfile::Compression => {
             panic!("BabyBear unified execution cannot use {profile:?}")
         }
     }

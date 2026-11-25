@@ -7,7 +7,6 @@ mod aligned_array;
 mod asm_utils;
 pub(crate) mod baseline;
 mod mixing_function;
-pub mod vectorized_impls;
 
 pub use mixing_function::{
     g_function, g_function_raw, mixing_function, round_function_full_rounds,

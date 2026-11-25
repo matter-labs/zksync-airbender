@@ -128,8 +128,7 @@ cargo run --release -p cli -- verify \
 `--soundness-mode pessimistic-conjecture|ethproofs-soundcalc` (default
 `pessimistic-conjecture`). Artifacts record their mode; `continue-proof` and `verify`
 refuse an artifact recorded in another mode and use that mode's own verifier guests.
-Compression and the L1 wrap support both modes. The EVM production packed profile
-requires `pessimistic-conjecture`.
+Compression and the L1 wrap support both modes.
 
 ## L1 Compression Checkpoint
 

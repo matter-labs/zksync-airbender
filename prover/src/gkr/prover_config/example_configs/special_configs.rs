@@ -3,17 +3,6 @@
 use super::*;
 use crate::gkr::whir::proximity_testing_modes::{PessimisticConjectureMode, ProximityTestingMode};
 
-impl ProverConfigProfile {
-    /// The EVM-production packed profile requires pessimistic-conjecture mode.
-    pub fn assert_supports(self, soundness_mode: SoundnessMode) {
-        assert!(
-            self != Self::EvmProductionPacked
-                || soundness_mode == SoundnessMode::PessimisticConjecture,
-            "{self:?} requires pessimistic-conjecture mode, got {soundness_mode:?}"
-        );
-    }
-}
-
 fn queries_and_pow_under_pessimistic_conjecture<const ROUNDS: usize>(
     level: SecurityLevel,
     base_lde_factor: usize,

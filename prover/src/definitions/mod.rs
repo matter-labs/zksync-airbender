@@ -107,7 +107,6 @@ impl SoundnessMode {
 pub enum ProverConfigProfile {
     Standard,
     Compression,
-    EvmProductionPacked,
 }
 
 /// The blake2s implementation a verifier program is built with: what a

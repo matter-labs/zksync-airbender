@@ -46,8 +46,6 @@ prover = ["worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "riscv_
 deterministic_pow = ["transcript/deterministic_pow"]
 # Print logs related to timings only.
 timing_logs = []
-# Will evaluate quotient on main domain for satisfiability checks
-debug_satisfiable = []
 # self-checks (logup identity, cache verification, claim verification, whir consistency)
 gkr_self_checks = []
 gkr_check_satisfied = []
