@@ -29,7 +29,7 @@ pub fn log(label: &'static str) {
         common_constants::stats::GKR_VERIFY_STATS.with_borrow(|s| *s),
     );
     STATS_LOG.with_borrow_mut(|log| {
-        // Runtime assert (not debug_assert) so release/test-release also panics
+        // Runtime assert (not debug_assert) so release builds also panic
         // instead of silently overrunning the LazyVec backing storage.
         assert!(
             log.len() < MAX_LOG_ENTRIES,

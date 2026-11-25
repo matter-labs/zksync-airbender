@@ -710,46 +710,22 @@ macro_rules! emit_early_exit {
 // BLINDLY ASSUMES no control-flow target lands strictly inside the run (the caller binds the
 // inner instruction labels to the run head defensively, so a stray jump cannot crash the JIT).
 //
-// `window` (max group size, one of 0/2/4/8; 0 disables) comes from RISCV_MERGE_WINDOW
-// (default 4 when unset).
-pub(crate) fn merge_window() -> usize {
-    use std::sync::OnceLock;
-    static W: OnceLock<usize> = OnceLock::new();
-    *W.get_or_init(|| match std::env::var("RISCV_MERGE_WINDOW") {
-        Ok(s) => {
-            let w: usize = s.parse().unwrap_or_else(|_| {
-                panic!("RISCV_MERGE_WINDOW must be 0, 2, 4 or 8 (got {:?})", s)
-            });
-            assert!(
-                matches!(w, 0 | 2 | 4 | 8),
-                "RISCV_MERGE_WINDOW must be 0, 2, 4 or 8 (got {})",
-                w
-            );
-            w // 0 disables merging (see `merged_word_run_g`)
-        }
-        Err(_) => 4, // default window when unset
-    })
-}
+/// Largest fusable group size (one, two or four) of the run of consecutive
+/// same-opcode, same-base word accesses with immediate stride exactly +4
+/// starting at `i`. Returns 1 when nothing fuses.
+fn merged_word_run_g(program: &[Instruction], is_static_target: &[bool], i: usize) -> usize {
+    const MAX_GROUP_SIZE: usize = 4;
 
-/// Largest fusable group size (a power of two in {1,2,4,8}, capped by `window`) of the run of
-/// consecutive same-opcode, same-base word accesses with immediate stride exactly +4 starting
-/// at `i`. Returns 1 when nothing fuses.
-fn merged_word_run_g(
-    program: &[Instruction],
-    is_static_target: &[bool],
-    i: usize,
-    window: usize,
-) -> usize {
     use InstructionName as Op;
     let a = &program[i];
-    if window < 2 || !matches!(a.name, Op::Lw | Op::Sw) {
+    if !matches!(a.name, Op::Lw | Op::Sw) {
         return 1;
     }
     let op = a.name;
     let base = a.rs1;
     let is_load = matches!(op, Op::Lw);
     let mut run = 1usize;
-    while run < window && i + run < program.len() {
+    while run < MAX_GROUP_SIZE && i + run < program.len() {
         let prev = &program[i + run - 1];
         let nxt = &program[i + run];
         // A load that overwrites the base register changes the address seen by every later
@@ -771,13 +747,13 @@ fn merged_word_run_g(
         run += 1;
     }
     let mut g = 1usize;
-    while g * 2 <= run && g * 2 <= window {
+    while g * 2 <= run {
         g *= 2;
     }
     g
 }
 
-/// Emit a fused run of `g` (a power of two in {2,4,8}) consecutive word loads or stores. Does
+/// Emit a fused run of `g` (2 or 4) consecutive word loads or stores. Does
 /// NOT touch r9; the caller advances r9 by g and does the chunk-full check. Advances r8 by 4*g.
 fn emit_merged_word_run(
     ops: &mut x64::Assembler,
@@ -890,7 +866,7 @@ fn emit_merged_word_run(
     }
 
     // (5) Loads only: distribute the read values to their destination registers (scalar reload
-    //     from RAM; the value column may span more than one xmm for g==8).
+    //     from RAM).
     if is_load {
         for j in 0..g {
             let rd = program[start + j].rd as u32;
@@ -1335,13 +1311,13 @@ impl<I: ContextImpl> JittedCode<I> {
             // print_registers!(ops, pc, instr);
 
             // Fuse a run of consecutive same-base word loads/stores (immediate stride +4) into
-            // wide vector memory/trace stores (packed path; RISCV_MERGE_WINDOW). The emitter
+            // wide vector memory/trace stores (packed path). The emitter
             // does all packed/timestamp/trace/counter bookkeeping for the whole run, so it
             // bypasses the per-instruction prologue and dispatch below.
             if !large_timestamps_offset
                 && matches!(instr.name, InstructionName::Lw | InstructionName::Sw)
             {
-                let g = merged_word_run_g(program, &is_static_target, i, merge_window());
+                let g = merged_word_run_g(program, &is_static_target, i);
                 if g >= 2 {
                     // Defensively bind the inner instruction labels / jump offsets to the
                     // run head (the no-inner-target assumption means they're never used; this
@@ -2567,7 +2543,7 @@ impl<I: ContextImpl> JittedCode<I> {
         // (`emit_merged_word_run`): word w of a run gets memory timestamp T0 + (4*w + delta),
         // delta = 1 for loads, 2 for stores. These hold the (4*w + delta) addends as u64 so a
         // 128-bit load of two adjacent entries plus a broadcast `paddq` of T0 builds two
-        // consecutive new timestamps. Sized for the largest window (8 words).
+        // consecutive new timestamps. Keep eight entries for the generated code layout.
         dynasm!(ops
             ; .arch x64
             ; .align 16

@@ -24,7 +24,6 @@ version = "0.1.0"
 dependencies = [
  "common_constants",
  "rand",
- "seq-macro",
  "serde",
 ]
 

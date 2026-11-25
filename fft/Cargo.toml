@@ -12,8 +12,6 @@ categories.workspace = true
 [dependencies]
 field.workspace = true
 worker.workspace = true
-unroll.workspace = true
-seq-macro.workspace = true
 type-map = "0.5"
 
 [dev-dependencies]

@@ -94,7 +94,7 @@ summary — the contract document is the source of truth.
 - `src/test_utils.rs`, `src/baby_bear/tests/`: the e2e/parity test suite
   (`#[cfg(test)]`), driving full proof workflows through this crate's
   `prove()` while reaching into `gpu_trace`/`gpu_gkr`/`gpu_whir`/
-  `gpu_prover_context`/`gpu_ops` test-reference seams
+  `gpu_prover_context` test-reference seams
   (`#[doc(hidden)] pub` items in those crates) across crate boundaries.
 - `src/tests/stagewise_replay.rs`: shared BabyBear/Proth120 transcript replay.
 - No `native/` tree, no `src/prover/`, no `src/witness/`; those live in
@@ -148,7 +148,7 @@ apply here directly.
   `RUST_TEST_THREADS=1`; no hung-test termination). The crate carries no
   `#[serial]` annotations. CPU-only tests may be named or moduled `cpu_*` to run
   parallel under nextest.
-- Bench: `cargo bench -p gpu_circuit_prover`
+- Profiling: run an ignored `profile_*` test from [the proof matrix](docs/profiling.md).
 - For compute-heavy GPU tests or prover flows, use `--release` by default. Use debug-mode execution only for quick smoke tests or when debug assertions/symbols are specifically needed.
 - Compile first with `cargo nextest run --no-run`, then run under
   `.agents/bin/with_gpu_lock.sh cargo nextest run …` so only the execution

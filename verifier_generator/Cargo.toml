@@ -13,11 +13,9 @@ categories.workspace = true
 cs = { workspace = true, features = ["compiler"] }
 prover = { workspace = true, features = ["prover"] }
 verifier_common = { workspace = true, features = ["proof_utils"] }
-serde.workspace = true
 syn = { version = "2", features = ["extra-traits", "printing", "full"]}
 quote = { version = "1" }
 proc-macro2 = "1"
-serde_json = "*"
 
 [features]
 no_caches = ["verifier_common/no_caches"]
@@ -28,8 +26,6 @@ no_caches = ["verifier_common/no_caches"]
 eval_leaves = []
 
 [dev-dependencies]
-test_utils = { workspace = true }
-rayon = "1"
 verifier_common = { workspace = true, features = ["proof_utils"] }
 
 [lints]
