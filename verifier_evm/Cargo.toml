@@ -23,7 +23,7 @@ indoc = "2"
 
 [dev-dependencies]
 proof_fixtures = { workspace = true }
-unified_reduced_machine_proth120_2_21 = { workspace = true }
+setups = { workspace = true }
 verifier_common = { workspace = true }
 riscv_transpiler = { workspace = true }
 serde = { workspace = true }

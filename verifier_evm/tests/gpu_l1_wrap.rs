@@ -8,10 +8,12 @@ use prover::gkr::prover_config::{ProofProfile, WhirInternalRound};
 use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use riscv_transpiler::elf::{read_elf_from_path_with_rom, ElfReadMode};
+use setups::unrolled_circuits::{
+    unified_reduced_machine_proth120_2_21, unified_reduced_machine_proth120_2_22,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use unified_reduced_machine_proth120_2_21::l1_wrap::l1_wrap_setup;
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile, FsvProgram};
 use verifier_evm::encoding::{encode_single_tx, FormatParams};
 use worker::Worker;
@@ -207,7 +209,15 @@ fn alternate_case(case: WrapCase) {
     };
     assert_eq!(proof_pc, final_pc);
     let worker = Worker::new();
-    let setup = l1_wrap_setup(binary, &image.padded_text_words(), &worker);
+    let text = image.padded_text_words();
+    let setup = match mode {
+        SoundnessMode::PessimisticConjecture => {
+            unified_reduced_machine_proth120_2_21::l1_wrap::l1_wrap_setup(binary, &text, &worker)
+        }
+        SoundnessMode::EthproofsSoundnessCalc => {
+            unified_reduced_machine_proth120_2_22::l1_wrap::l1_wrap_setup(binary, &text, &worker)
+        }
+    };
     let twiddles = Twiddles::new(1 << config.whir_message_size_log2(), &worker);
     let rows: Vec<_> = setup
         .setup
