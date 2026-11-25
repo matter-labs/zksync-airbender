@@ -26,6 +26,7 @@ pub use ::mul_div_unsigned::UnsignedMulDivCircuit;
 pub use ::shift_binary::ShiftBinaryCircuit;
 pub use ::unified_reduced_machine::UnifiedReducedMachineCircuit;
 pub use ::unified_reduced_machine_2_22::UnifiedReducedMachineCircuit2_22;
+pub use ::unified_reduced_machine_proth120_2_21::L1WrapSetup;
 
 pub use ::bigint_with_control::BigIntDelegationCircuit;
 pub use ::blake2_g_function::Blake2sGFunctionDelegationCircuit;
