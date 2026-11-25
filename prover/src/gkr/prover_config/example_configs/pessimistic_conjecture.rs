@@ -8,7 +8,7 @@
 //! work of [`pow_bits`](super::super::pow_bits), and the folding challenges
 //! and the single OOD sample per oracle draw without proof of work.
 
-use crate::gkr::whir::proximity_testing_modes::PessimisticConjectureMode;
+use crate::gkr::whir::proximity_testing_modes::{PessimisticConjectureMode, ProximityTestingMode};
 
 use super::*;
 

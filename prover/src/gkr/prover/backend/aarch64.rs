@@ -97,16 +97,6 @@ impl ExtCoeffConversion<BabyBearField, BabyBearExt4> for BabyBearNeonExtCoeffCon
         self.ctx.values_per_leaf
     }
 
-    #[inline(always)]
-    fn convert_gathered_leaf(
-        &self,
-        offset_inv: BabyBearField,
-        leaf_index: usize,
-        leaf: &mut [BabyBearExt4],
-    ) {
-        self.ctx.convert_gathered_leaf(offset_inv, leaf_index, leaf);
-    }
-
     fn convert_leaf(
         &self,
         column: &[BabyBearExt4],

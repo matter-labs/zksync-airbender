@@ -354,7 +354,6 @@ mod tests {
         let twiddles = avx2.make_twiddles(2 * n, &worker);
         let pool = crate::allocation_pool::X86BabyBearAllocationPool::new();
         let strided = BabyBearAvx512WorkStealingBackend::new(true);
-        // the base commits' factor 2 and the by-coefficient WHIR oracle's 8
         for lde_factor in [2usize, 8] {
             let reference = avx2
                 .lde_multiple_polys_from_hypercubes(&cols, &twiddles, lde_factor, &pool, &worker);

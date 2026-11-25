@@ -57,55 +57,8 @@ pub enum ProgramStep<E: Field> {
     LinE { i: u16, c: E },
 }
 
-/// Slot-schedule step for the tiled uniskip evaluator. Base-pool indices
-/// < `num_base` are real polys; >= `num_base` are bracket forms (materialized
-/// from source taps on load, so forms do not pin their member grids).
-#[derive(Clone)]
-#[cfg(target_arch = "aarch64")]
-#[allow(dead_code)]
-pub enum TiledStep<E: Field> {
-    LoadBase {
-        slot: u16,
-        idx: u16,
-    },
-    LoadExt {
-        slot: u16,
-        idx: u16,
-    },
-    /// combine the form's members from their RESIDENT grids (all 128 cells --
-    /// LDE is linear, so the coset half combines directly) into `slot`
-    BuildForm {
-        slot: u16,
-        form: u16,
-        member_slots: Vec<u16>,
-    },
-    QuadBB {
-        sa: u16,
-        sb: u16,
-        c: E,
-    },
-    QuadBE {
-        sb: u16,
-        se: u16,
-        c: E,
-    },
-    QuadEE {
-        sa: u16,
-        sb: u16,
-        c: E,
-    },
-    LinB {
-        slot: u16,
-        c: E,
-    },
-    LinE {
-        slot: u16,
-        c: E,
-    },
-}
-
 /// Owned SoA + bracket program for one layer, consumed by the production
-/// windowed sumcheck loop (mirrors the program the bench driver builds inline).
+/// windowed sumcheck loop.
 pub struct OwnedSoaProgram<F: PrimeField, E: Field> {
     pub base_interp: Vec<bool>,
     pub ext_interp: Vec<bool>,

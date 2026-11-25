@@ -2529,39 +2529,6 @@ pub mod ext4 {
         }
     }
 
-    /// FOUR gathered leaves, slot-major (`quad[4k + w]` = slot `k` of leaf
-    /// `w`; `quad.len() = 4 * values per leaf`, 2..=32 values), converted in
-    /// place as two vector pairs. Byte-identical to
-    /// `evals_to_multilinear_coeffs` per leaf.
-    pub fn leaf_quad_to_coeff_form(
-        quad: &mut [BabyBearExt4],
-        hp_raw: &[u32],
-        two_inv: BabyBearField,
-        root_invs_raw: [u32; 4],
-    ) {
-        const STRIDE4: [usize; 32] = {
-            let mut a = [0usize; 32];
-            let mut i = 0;
-            while i < 32 {
-                a[i] = 4 * i;
-                i += 1;
-            }
-            a
-        };
-        let n = quad.len() / 4;
-        assert!((2..=32).contains(&n) && n.is_power_of_two() && quad.len() == 4 * n);
-        unsafe {
-            fold_leaf_range(
-                quad.as_mut_ptr(),
-                &STRIDE4[..n],
-                hp_raw,
-                two_inv.raw_u32_value(),
-                &root_invs_raw,
-                0..4,
-            );
-        }
-    }
-
     /// Serial coset conversion. Byte-identical to the scalar
     /// `ExtCoeffConvCtx::apply_serial`.
     pub fn leaves_to_coeff_form_serial(

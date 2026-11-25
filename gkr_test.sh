@@ -143,7 +143,7 @@ Options:
   --check-satisfied     Enable the heavyweight constraint-satisfaction check.
                         Adds gkr_check_satisfied feature; default OFF (slow).
   --circuits A,B,...    Subcommand-aware filter; must be a subset of the
-                        subcommand's circuit set. Canonical proving always emits all 28 proofs.
+                        subcommand's circuit set. Canonical proving always emits all proofs.
   --from STEP           Run STEP plus every step that (transitively) depends on it.
   --warnings            Show compiler warnings (suppressed by default).
   --dry-run             Print what would run without executing.
@@ -154,7 +154,7 @@ Steps (run in dependency order, not the order listed here):
   witness_gen     Generate witness evaluation functions
   build_program   Rebuild the diagnostic program selected by the subcommand
   generator       Regenerate inlined verifier
-  prover          Regenerate all 28 canonical proofs from the shared input recipe
+  prover          Regenerate all canonical proofs from the shared input recipe
   native          Run native verifier tests
   corruption      Run corruption tests
   binaries        Build RISC-V binaries
@@ -454,7 +454,7 @@ step_generator() {
 }
 
 step_prover() {
-  run_step "Regenerate all 28 canonical circuit proofs" \
+  run_step "Regenerate all canonical circuit proofs" \
     env RUST_MIN_STACK=100000000 RUSTFLAGS="$WARN_FLAGS" \
       cargo test -p prover --profile cli --lib --features test \
       "${PROVER_CARGO_FEATURE_ARGS[@]+"${PROVER_CARGO_FEATURE_ARGS[@]}"}" \
@@ -540,7 +540,7 @@ step_malicious() {
       # gates the in-prover cache-perturbation hook; inert without an explicit register()).
       run_step "Generate malicious proofs (corrupt witness, no self-checks)" \
         run_prover_cargo \
-          --no-default-features --features prover,bincode,gkr_test_forge \
+          --no-default-features --features prover,gkr_test_forge \
           -- --ignored --nocapture "${HEAVY_TEST_THREADS[@]}" \
           generate_malicious_proofs generate_subword_regression_proof generate_memtuple_regression_proofs
       # --skip rejects_malicious_unified: the unified reject-tests read malicious_unified_*

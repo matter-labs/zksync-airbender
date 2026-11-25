@@ -42,7 +42,6 @@ default = ["jit"]
 # See `emit_merged_word_run` / `merge_window` in src/jit/impls.rs.
 
 [dev-dependencies]
-test_utils = { workspace = true }
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git" }
 hex = "*"
 serial_test = "*"

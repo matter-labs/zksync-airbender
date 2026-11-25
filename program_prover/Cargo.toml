@@ -19,7 +19,6 @@ setups = { workspace = true, features = ["witness_eval_fn"] }
 circuit_common = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
-bincode = { version = "1.3" }
 verifier_common = { workspace = true, default-features = false }
 full_statement_verifier = { workspace = true, default-features = false, features = ["proof_utils", "host_utils"]}
 

@@ -19,15 +19,3 @@ pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> 
     let src = std::io::BufReader::new(std::fs::File::open(filename).unwrap());
     serde_json::from_reader(src).unwrap()
 }
-
-pub fn try_deserialize_from_file<T: serde::de::DeserializeOwned>(
-    filename: &str,
-) -> std::io::Result<T> {
-    let src = std::io::BufReader::new(std::fs::File::open(filename)?);
-    Ok(serde_json::from_reader(src).unwrap())
-}
-
-pub fn bincode_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::io::BufReader::new(std::fs::File::open(filename).unwrap());
-    bincode::deserialize_from(src).unwrap()
-}

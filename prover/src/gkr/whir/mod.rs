@@ -948,14 +948,12 @@ fn format_build_split(split: OracleBuildSplit) -> String {
     }
 }
 
-/// Build the intermediate oracle for a folded polynomial (`monomial_form` and
-/// `evaluation_form` are the same polynomial: the by-coefficient path LDEs the
-/// evaluations, the others the monomials), returning its Merkle cap (to
-/// commit), the oracle and the LDE/tree time split (in-memory modes).
+/// Build the intermediate oracle from the folded polynomial's monomial
+/// coefficients. Return its Merkle cap, the oracle and the LDE/tree time split
+/// for in-memory modes.
 fn build_intermediate_oracle<F, E, T, B: crate::gkr::prover::backend::Backend<F, E>>(
     backend: &B,
     monomial_form: &[E],
-    evaluation_form: &[E],
     lde_factor: usize,
     values_per_leaf: usize,
     tree_cap_size: usize,
@@ -973,7 +971,6 @@ where
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
 {
-    assert_eq!(monomial_form.len(), evaluation_form.len());
     match mode {
         WhirIntermediateOracleMode::Monolithic => {
             let t_lde = std::time::Instant::now();
@@ -1540,7 +1537,6 @@ pub fn whir_fold<
             let (cap, next_oracle, split) = build_intermediate_oracle::<F, E, T, B>(
                 backend,
                 &sumchecked_poly_monomial_form,
-                evals_pp.as_slice(),
                 lde_factor,
                 1 << next_folding_steps,
                 tree_cap_size,
@@ -1929,7 +1925,6 @@ pub fn whir_fold<
             let (cap, next_oracle, split) = build_intermediate_oracle::<F, E, T, B>(
                 backend,
                 &sumchecked_poly_monomial_form,
-                evals_pp.as_slice(),
                 lde_factor,
                 1 << next_folding_steps,
                 tree_cap_size,

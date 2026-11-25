@@ -104,7 +104,7 @@ class DecoderFixtureInventoryTest(unittest.TestCase):
         verifier_root = repository / 'tools/gkr_verifier/full_statement_verifiers'
         expected_verifiers = []
         for path in sorted(verifier_root.glob('*/fsv_*.elf')):
-            if path.stem == 'fsv_unified_base_layer_sec_100' or '_wrap_' in path.stem:
+            if '_wrap_' in path.stem:
                 continue
             mode = path.parent.name
             config = 'reduced' if path.name.startswith('fsv_unrolled_') else 'unified'

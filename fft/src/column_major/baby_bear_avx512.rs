@@ -1,11 +1,8 @@
-//! EXPERIMENTAL AVX-512 twin of the BabyBear DIT NTT kernel in
-//! [`super::baby_bear_avx2`]: the same blocked structure (fused AVX2 prep
-//! sweep, block-local phase with 2^14 quarter-blocks, radix-16 line-complete
-//! global sweeps) on 16-lane `__m512i` vectors — a 64-byte line is ONE
-//! vector, so every line item is a single vector per stream, and the four
-//! smallest levels (`ppg = 1, 2, 4, 8`) are in-register passes built on
-//! `vpermt2d`. Values are identical to the AVX2 kernel (canonical Montgomery
-//! everywhere). Functions are gated by `#[target_feature(enable = "avx512f")]`
+//! AVX-512 strided NTT for BabyBear values in canonical Montgomery form.
+//! `strided_tile` loads 16 vectors from strided chunks and applies the first
+//! four DIF butterfly stages across vectors. `transpose_16x16` then packs
+//! the results into contiguous output lines for the remaining stages.
+//! Functions are gated by `#[target_feature(enable = "avx512f")]`
 //! so the enclosing binary keeps its plain AVX2 code generation; callers must
 //! check `is_x86_feature_detected!("avx512f")`.
 #![cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
@@ -145,59 +142,6 @@ unsafe fn twset(tw: *const u32, ao: *const u32, bo: *const u32, k2: usize) -> [_
     ]
 }
 
-/// In-register pass for `ppg = 2^b`, `b <= 3`, over 32 consecutive elements
-/// per iteration: `vpermt2d` de-interleaves the lo/hi halves of every pair,
-/// the butterfly runs on 16 lanes, `vpermt2d` re-interleaves. `tw` points at
-/// the group-index-offset twiddles for this block.
-#[target_feature(enable = "avx512f")]
-unsafe fn pass_small(a: *mut u32, n: usize, b: u32, tw: *const u32) {
-    let ppg = 1usize << b;
-    let mut idx_u = [0i32; 16];
-    let mut idx_v = [0i32; 16];
-    let mut idx_o0 = [0i32; 16];
-    let mut idx_o1 = [0i32; 16];
-    let mut dup = [0i32; 16];
-    for l in 0..16usize {
-        let iu = ((l >> b) << (b + 1)) | (l & (ppg - 1));
-        idx_u[l] = iu as i32;
-        idx_v[l] = (iu + ppg) as i32;
-        dup[l] = (l >> b) as i32;
-    }
-    for i in 0..32usize {
-        let lane = ((i >> (b + 1)) << b) | (i & (ppg - 1));
-        let src = if (i >> b) & 1 == 1 { 16 } else { 0 };
-        let v = (src + lane) as i32;
-        if i < 16 {
-            idx_o0[i] = v;
-        } else {
-            idx_o1[i - 16] = v;
-        }
-    }
-    let idx_u = _mm512_loadu_si512(idx_u.as_ptr() as *const __m512i);
-    let idx_v = _mm512_loadu_si512(idx_v.as_ptr() as *const __m512i);
-    let idx_o0 = _mm512_loadu_si512(idx_o0.as_ptr() as *const __m512i);
-    let idx_o1 = _mm512_loadu_si512(idx_o1.as_ptr() as *const __m512i);
-    let dup = _mm512_loadu_si512(dup.as_ptr() as *const __m512i);
-    let tw_per_iter = 16 >> b; // distinct twiddles per 32 elements
-    let mut j = 0usize;
-    while j < n {
-        let v0 = ld(a.add(j));
-        let v1 = ld(a.add(j + 16));
-        let u = _mm512_permutex2var_epi32(v0, idx_u, v1);
-        let v = _mm512_permutex2var_epi32(v0, idx_v, v1);
-        // twiddles: `tw_per_iter` consecutive entries at group index j / (2 ppg), duplicated per lane group
-        let t = _mm512_maskz_loadu_epi32(
-            ((1u32 << tw_per_iter) - 1) as u16,
-            tw.add(j >> (b + 1)) as *const i32,
-        );
-        let s = _mm512_permutexvar_epi32(dup, t);
-        let (na, nb) = butterfly(u, v, s);
-        st(a.add(j), _mm512_permutex2var_epi32(na, idx_o0, nb));
-        st(a.add(j + 16), _mm512_permutex2var_epi32(na, idx_o1, nb));
-        j += 32;
-    }
-}
-
 /// Radix-4 items (`ppg >= 16`): item `t` = group `k2 = t / (ppg/16)`, vector `j16`.
 #[target_feature(enable = "avx512f")]
 pub unsafe fn radix4_items(
@@ -234,33 +178,6 @@ pub unsafe fn radix4_items(
             st(a.add(j + ppg), z1);
             st(a.add(j + 2 * ppg), z2);
             st(a.add(j + 3 * ppg), z3);
-            j += 16;
-        }
-        t += run;
-    }
-}
-
-/// Radix-2 items (`ppg >= 16`).
-#[target_feature(enable = "avx512f")]
-pub unsafe fn radix2_items(
-    a: *mut u32,
-    ppg: usize,
-    tw: *const u32,
-    k_offset: usize,
-    item_range: core::ops::Range<usize>,
-) {
-    let vecs = ppg / 16;
-    let mut t = item_range.start;
-    while t < item_range.end {
-        let k = t / vecs;
-        let j16 = t % vecs;
-        let s = _mm512_set1_epi32(*tw.add(k + k_offset) as i32);
-        let run = (vecs - j16).min(item_range.end - t);
-        let mut j = k * ppg * 2 + j16 * 16;
-        for _ in 0..run {
-            let (nu, nv) = butterfly(ld(a.add(j)), ld(a.add(j + ppg)), s);
-            st(a.add(j), nu);
-            st(a.add(j + ppg), nv);
             j += 16;
         }
         t += run;
@@ -343,195 +260,8 @@ pub unsafe fn radix16_items(
     }
 }
 
-#[target_feature(enable = "avx512f")]
-unsafe fn tail_two_groups_items(
-    a: *mut u32,
-    n: usize,
-    tw: *const u32,
-    j16_range: core::ops::Range<usize>,
-) {
-    let q = n / 4;
-    let s_a = _mm512_set1_epi32(*tw as i32);
-    let s_b = _mm512_set1_epi32(*tw.add(1) as i32);
-    for j16 in j16_range {
-        let j = j16 * 16;
-        let (y0, y1) = butterfly(ld(a.add(j)), ld(a.add(j + q)), s_a);
-        let (y2, y3) = butterfly(ld(a.add(j + 2 * q)), ld(a.add(j + 3 * q)), s_b);
-        st(a.add(j), add(y0, y2));
-        st(a.add(j + 2 * q), sub(y0, y2));
-        st(a.add(j + q), add(y1, y3));
-        st(a.add(j + 3 * q), sub(y1, y3));
-    }
-}
-#[target_feature(enable = "avx512f")]
-unsafe fn tail_final_items(a: *mut u32, n: usize, j16_range: core::ops::Range<usize>) {
-    let half = n / 2;
-    for j16 in j16_range {
-        let j = j16 * 16;
-        let u = ld(a.add(j));
-        let v = ld(a.add(j + half));
-        st(a.add(j), add(u, v));
-        st(a.add(j + half), sub(u, v));
-    }
-}
-
 pub const BLOCK_LOG2: u32 = 16;
 pub const SUB_BLOCK_LOG2: u32 = 14;
-
-/// Block-local levels (`ppg = 1 .. 2^15`) of the `b`-th 2^16 block, hierarchically
-/// over 2^14 quarter-blocks: in-register passes 1/2/4/8, radix-16 (16..128),
-/// radix-16 (256..2048), radix-4 (4096, 8192); then radix-4 (16384, 32768) over the block.
-#[target_feature(enable = "avx512f")]
-pub unsafe fn ntt_block_local(
-    a: *mut u32,
-    b: usize,
-    tw: *const u32,
-    ao: *const u32,
-    bo: *const u32,
-) {
-    let blk = 1usize << BLOCK_LOG2;
-    let sub = 1usize << SUB_BLOCK_LOG2;
-    for q in 0..4 {
-        let sb = 4 * b + q;
-        let p = a.add(q * sub);
-        for lvl in 0..4u32 {
-            pass_small(p, sub, lvl, tw.add(sb * (sub >> (lvl + 1))));
-        }
-        radix16_items(p, 16, tw, ao, bo, sb * (sub / 256), 0..sub / 256);
-        radix16_items(p, 256, tw, ao, bo, sb * (sub / 4096), 0..sub / 4096 * 16);
-        radix4_items(
-            p,
-            4096,
-            tw,
-            ao,
-            bo,
-            sb * (sub / 16384),
-            0..(sub / 16384) * 256,
-        );
-    }
-    radix4_items(
-        a,
-        sub,
-        tw,
-        ao,
-        bo,
-        b * (blk / (4 * sub)),
-        0..(blk / (4 * sub)) * (sub / 16),
-    );
-}
-
-/// Blocked worker-parallel DIT NTT (`n >= 2^16`, bit-reversed -> natural), AVX-512.
-#[target_feature(enable = "avx512f")]
-pub unsafe fn ntt_bitrev_to_natural_blocked_parallel(
-    a: &mut [u32],
-    log_n: u32,
-    tw: &[u32],
-    tw_ao: &[u32],
-    tw_bo: &[u32],
-    worker: &Worker,
-) {
-    let n = a.len();
-    let blk = 1usize << BLOCK_LOG2;
-    debug_assert!(n >= blk && n == 1usize << log_n);
-    let base_addr = a.as_mut_ptr() as usize;
-    let (t_addr, ao_addr, bo_addr) = (
-        tw.as_ptr() as usize,
-        tw_ao.as_ptr() as usize,
-        tw_bo.as_ptr() as usize,
-    );
-    let num_blocks = n / blk;
-    worker.scope(num_blocks, |scope, geometry| {
-        let (work, chunks) = (num_blocks, geometry.len());
-        for idx in 0..chunks {
-            let (start, size) = balanced_chunk(work, chunks, idx);
-            spawn_chunk(scope, idx == chunks - 1, move |_| {
-                for b in start..start + size {
-                    ntt_block_local(
-                        (base_addr as *mut u32).add(b * blk),
-                        b,
-                        t_addr as *const u32,
-                        ao_addr as *const u32,
-                        bo_addr as *const u32,
-                    );
-                }
-            });
-        }
-    });
-    let mut ppg = blk;
-    let mut levels_left = log_n - BLOCK_LOG2;
-    while levels_left >= 4 {
-        let items = n / 256;
-        let cur = ppg;
-        worker.scope(items, |scope, geometry| {
-            let (work, chunks) = (items, geometry.len());
-            for idx in 0..chunks {
-                let (start, size) = balanced_chunk(work, chunks, idx);
-                spawn_chunk(scope, idx == chunks - 1, move |_| {
-                    radix16_items(
-                        base_addr as *mut u32,
-                        cur,
-                        t_addr as *const u32,
-                        ao_addr as *const u32,
-                        bo_addr as *const u32,
-                        0,
-                        start..start + size,
-                    );
-                });
-            }
-        });
-        ppg *= 16;
-        levels_left -= 4;
-    }
-    if levels_left == 3 {
-        let items = n / 64;
-        let cur = ppg;
-        worker.scope(items, |scope, geometry| {
-            let (work, chunks) = (items, geometry.len());
-            for idx in 0..chunks {
-                let (start, size) = balanced_chunk(work, chunks, idx);
-                spawn_chunk(scope, idx == chunks - 1, move |_| {
-                    radix4_items(
-                        base_addr as *mut u32,
-                        cur,
-                        t_addr as *const u32,
-                        ao_addr as *const u32,
-                        bo_addr as *const u32,
-                        0,
-                        start..start + size,
-                    );
-                });
-            }
-        });
-        levels_left = 1;
-    }
-    match levels_left {
-        0 => {}
-        2 => worker.scope(n / 64, |scope, geometry| {
-            let (work, chunks) = (n / 64, geometry.len());
-            for idx in 0..chunks {
-                let (start, size) = balanced_chunk(work, chunks, idx);
-                spawn_chunk(scope, idx == chunks - 1, move |_| {
-                    tail_two_groups_items(
-                        base_addr as *mut u32,
-                        n,
-                        t_addr as *const u32,
-                        start..start + size,
-                    );
-                });
-            }
-        }),
-        1 => worker.scope(n / 32, |scope, geometry| {
-            let (work, chunks) = (n / 32, geometry.len());
-            for idx in 0..chunks {
-                let (start, size) = balanced_chunk(work, chunks, idx);
-                spawn_chunk(scope, idx == chunks - 1, move |_| {
-                    tail_final_items(base_addr as *mut u32, n, start..start + size);
-                });
-            }
-        }),
-        _ => unreachable!(),
-    }
-}
 
 // ------------------------------------------------------------------------
 // hypercube evals -> monomial coefficients (AVX-512, blocked)
@@ -578,7 +308,7 @@ unsafe fn sub_levels_items(
 }
 
 /// In-register "hi -= lo" for stride `2^b`, `b <= 3`, over 32 consecutive
-/// elements per iteration (same lane split as [`pass_small`]).
+/// elements per iteration.
 #[target_feature(enable = "avx512f")]
 unsafe fn sub_small(a: *mut u32, n: usize, b: u32) {
     let ppg = 1usize << b;
@@ -635,45 +365,6 @@ unsafe fn transform_block(a: *mut u32) {
         sub_small(a, blk, b);
     }
 }
-
-// ------------------------------------------------------------------------
-// fused scale + bit-reverse + block-local phase
-// ------------------------------------------------------------------------
-
-/// `offset^i = lo[i & mask] * hi[i >> h]` split tables (raw Montgomery).
-pub struct SplitPowers {
-    pub lo: Vec<u32>,
-    pub hi: Vec<u32>,
-    pub h: u32,
-    pub mask: usize,
-}
-impl SplitPowers {
-    pub fn new(offset: BabyBearField, log_n: u32) -> Self {
-        use field::Field;
-        let h = log_n / 2;
-        let mut lo = Vec::with_capacity(1 << h);
-        let mut x = BabyBearField::ONE;
-        for _ in 0..(1usize << h) {
-            lo.push(x.raw_u32_value());
-            x.mul_assign(&offset);
-        }
-        // x == offset^(2^h)
-        let step = x;
-        let mut hi = Vec::with_capacity(1 << (log_n - h));
-        let mut y = BabyBearField::ONE;
-        for _ in 0..(1usize << (log_n - h)) {
-            hi.push(y.raw_u32_value());
-            y.mul_assign(&step);
-        }
-        Self {
-            lo,
-            hi,
-            h,
-            mask: (1usize << h) - 1,
-        }
-    }
-}
-
 /// 16x16 transpose of `u32` lanes: four 8x8 transposes on the 256-bit
 /// halves, recombined.
 #[target_feature(enable = "avx512f")]

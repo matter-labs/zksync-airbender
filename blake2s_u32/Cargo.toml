@@ -15,11 +15,6 @@ common_constants = { workspace = true }
 
 [dev-dependencies]
 blake2 = "*"
-criterion = "0.5"
-
-[[bench]]
-name = "neon"
-harness = false
 
 [features]
 blake2_with_compression = []

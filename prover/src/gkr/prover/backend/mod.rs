@@ -93,52 +93,6 @@ pub trait ExtCoeffConversion<F: PrimeField + TwoAdicField, E: FieldExtension<F> 
             self.convert_leaf(column, offset_inv, first_leaf + w, chunk);
         }
     }
-    /// Convert ONE already gathered leaf in place: `leaf` holds the
-    /// evaluations in the tree's leaf order, `leaf_index` is its index in
-    /// the coset and `offset_inv` the inverse of the coset's LDE offset.
-    /// Bit-identical to [`Self::convert_leaf`] on the column the leaf was
-    /// gathered from (the by-coefficient oracle gathers leaves itself).
-    fn convert_gathered_leaf(&self, offset_inv: F, leaf_index: usize, leaf: &mut [E]);
-    /// Leaves `first_leaf .. first_leaf + count` (leaf-major in `leaves`,
-    /// already gathered) converted in place; vector implementations batch
-    /// pairs of leaves here.
-    fn convert_gathered_leaves(
-        &self,
-        offset_inv: F,
-        first_leaf: usize,
-        count: usize,
-        leaves: &mut [E],
-    ) {
-        let vpl = self.values_per_leaf();
-        for (w, chunk) in leaves[..count * vpl].chunks_exact_mut(vpl).enumerate() {
-            self.convert_gathered_leaf(offset_inv, first_leaf + w, chunk);
-        }
-    }
-    /// Leaves `first_leaf .. first_leaf + count` gathered SLOT-MAJOR
-    /// (`block[k * count + w]` = slot `k` of leaf `w`) converted in place —
-    /// the layout a vector gather of consecutive leaves produces and the
-    /// two-leaves-per-vector kernels consume without any re-interleaving.
-    fn convert_gathered_block(
-        &self,
-        offset_inv: F,
-        first_leaf: usize,
-        count: usize,
-        block: &mut [E],
-    ) {
-        let vpl = self.values_per_leaf();
-        let mut leaves = vec![E::ZERO; count * vpl];
-        for w in 0..count {
-            for k in 0..vpl {
-                leaves[w * vpl + k] = block[k * count + w];
-            }
-        }
-        self.convert_gathered_leaves(offset_inv, first_leaf, count, &mut leaves);
-        for w in 0..count {
-            for k in 0..vpl {
-                block[k * count + w] = leaves[w * vpl + k];
-            }
-        }
-    }
 }
 
 /// A shared leaf conversion of one oracle (the in-memory oracles keep their
@@ -256,17 +210,6 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> ExtCoeffConvers
             *o = column[off + leaf_index];
         }
     }
-    #[inline(always)]
-    fn convert_gathered_leaf(&self, _offset_inv: F, _leaf_index: usize, _leaf: &mut [E]) {}
-    #[inline(always)]
-    fn convert_gathered_block(
-        &self,
-        _offset_inv: F,
-        _first_leaf: usize,
-        _count: usize,
-        _block: &mut [E],
-    ) {
-    }
 }
 
 /// The standard conversion used by every current backend: the scalar
@@ -299,10 +242,6 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> ExtCoeffConvers
     #[inline(always)]
     fn convert_leaf(&self, column: &[E], offset_inv: F, leaf_index: usize, out: &mut [E]) {
         self.ctx.convert_leaf(column, offset_inv, leaf_index, out);
-    }
-    #[inline(always)]
-    fn convert_gathered_leaf(&self, offset_inv: F, leaf_index: usize, leaf: &mut [E]) {
-        self.ctx.convert_gathered_leaf(offset_inv, leaf_index, leaf);
     }
 }
 

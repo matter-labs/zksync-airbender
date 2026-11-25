@@ -36,7 +36,6 @@ test_compression = []
 # Native Miri-input preparation counts executed multiproof query branches.
 multiproof_coverage = ["proof_utils"]
 no_inline = ["field/no_inline"]
-worst_case_config_generation = []
 blake2_with_compression = ["blake2s_u32/blake2_with_compression", "transcript/blake2_with_compression"]
 mop_extension = ["blake2s_u32/mop_extension", "transcript/mop_extension"]
 special_opcodes_extension = ["blake2s_u32/special_opcodes_extension", "transcript/special_opcodes_extension"]

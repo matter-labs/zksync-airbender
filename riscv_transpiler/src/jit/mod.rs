@@ -8,8 +8,6 @@ use std::ptr::NonNull;
 #[cfg(target_pointer_width = "64")]
 mod delegations;
 #[cfg(target_pointer_width = "64")]
-pub mod minimal_tracer;
-#[cfg(target_pointer_width = "64")]
 pub mod structs;
 
 #[cfg(target_pointer_width = "64")]
