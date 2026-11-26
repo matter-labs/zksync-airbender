@@ -114,19 +114,20 @@ fi
 
 for mode in "${modes[@]}"; do
   echo "== $mode: prove base"
-  "$cli" prove --bin "$bin" "${input[@]}" --target base --backend "$backend" \
-    --soundness-mode "$mode" --output-dir "$out" --output-file "$mode-base.json" "${settings[@]}"
+  "$cli" prove --bin "$bin" "${input[@]+"${input[@]}"}" --target base --backend "$backend" \
+    --soundness-mode "$mode" --output-dir "$out" --output-file "$mode-base.json" \
+    "${settings[@]+"${settings[@]}"}"
   check_modes "$out/$mode-base.json" "$mode" NativeVerificationFailed
   echo "== $mode: continue to recursion-unified"
   "$cli" continue-proof --proof "$out/$mode-base.json" --bin "$bin" --target recursion-unified \
     --backend "$backend" --soundness-mode "$mode" --output-dir "$out" \
-    --output-file "$mode-continued.json" "${settings[@]}"
+    --output-file "$mode-continued.json" "${settings[@]+"${settings[@]}"}"
   check_unified "$out/$mode-continued.json" "$mode"
   if [[ "${DIRECT:-0}" == 1 ]]; then
     echo "== $mode: prove recursion-unified"
-    "$cli" prove --bin "$bin" "${input[@]}" --target recursion-unified --backend "$backend" \
+    "$cli" prove --bin "$bin" "${input[@]+"${input[@]}"}" --target recursion-unified --backend "$backend" \
       --soundness-mode "$mode" --output-dir "$out" --output-file "$mode-direct.json" \
-      "${settings[@]}"
+      "${settings[@]+"${settings[@]}"}"
     check_unified "$out/$mode-direct.json" "$mode"
   fi
 done
