@@ -8,8 +8,7 @@ use execution_prover::{ExecutionKind, MachineType};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Shared by both legs; the JIT's timestamp bound must fit `u32`, which
-/// `1 << 31` cycles would not.
+/// Cycle cap shared by both execution backends.
 const CYCLES_BOUND: usize = 1 << 29;
 /// `JitRunnerRam::Medium`, which the CPU defaults select.
 const RAM_BOUND: usize = 1 << 30;

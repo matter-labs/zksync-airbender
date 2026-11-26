@@ -675,10 +675,7 @@ macro_rules! emit_early_exit {
             ; cmp r8, 4
             ; jl -> exit_with_error
 
-            ; xor rax, rax
-            ; mov eax, (($bound >> 32) as u32) as i32
-            ; shl rax, 32
-            ; add eax, ($bound as u32) as i32
+            ; mov rax, QWORD ($bound as i64)
             ; cmp r8, rax
 
             ; jl >skip
