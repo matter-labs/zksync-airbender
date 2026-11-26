@@ -415,7 +415,7 @@ fn assemble_result<A: fft::GoodAllocator>(
     }
 }
 
-#[cfg(all(test, target_arch = "x86_64"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_support::TestBackend;

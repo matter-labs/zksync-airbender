@@ -17,12 +17,17 @@ use log::{debug, trace};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, ReplayerMemChunks, TraceChunk};
 use riscv_transpiler::replayer::ReplayerVM;
+#[cfg(not(target_arch = "x86_64"))]
+use riscv_transpiler::vm::SimpleTape;
 use riscv_transpiler::vm::{InstructionTape, NonDeterminismCSRSource, State};
 use std::cmp::min;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+#[cfg(target_arch = "x86_64")]
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
+#[cfg(target_arch = "x86_64")]
 use type_map::concurrent::TypeMap;
 use worker::Worker;
 
@@ -46,9 +51,10 @@ pub(crate) fn run_simulator<
     machine_type: MachineType,
     unified_circuit: CircuitType,
     binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
-    text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
+    #[cfg(not(target_arch = "x86_64"))] instruction_tape: Arc<SimpleTape>,
+    #[cfg(target_arch = "x86_64")] text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
     cycles_bound: Option<u32>,
-    jit_cache: Arc<Mutex<TypeMap>>,
+    #[cfg(target_arch = "x86_64")] jit_cache: Arc<Mutex<TypeMap>>,
     memory_holder: &mut M,
     non_determinism_source: ND,
     non_determinism_return: Sender<ND>,
@@ -60,7 +66,7 @@ pub(crate) fn run_simulator<
     abort: Arc<AtomicBool>,
     worker: &Worker,
     ram_config: JitRunnerRam,
-    assume_canonical_mop_inputs: bool,
+    #[cfg(target_arch = "x86_64")] assume_canonical_mop_inputs: bool,
 ) {
     assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
     assert_eq!(ram_config.ram_size(), memory_holder.ram_size());
@@ -92,13 +98,24 @@ pub(crate) fn run_simulator<
         abort,
         empty_it_streamer,
         ram_config,
+        #[cfg(target_arch = "x86_64")]
         assume_canonical_mop_inputs,
     );
+    #[cfg(target_arch = "x86_64")]
     let runner = runner.run(
         binary_image,
         text_section,
         cycles_bound,
         jit_cache,
+        memory_holder,
+    );
+    #[cfg(not(target_arch = "x86_64"))]
+    let mut runner = runner;
+    #[cfg(not(target_arch = "x86_64"))]
+    runner.run_vm(
+        &binary_image,
+        &instruction_tape,
+        cycles_bound,
         memory_holder,
     );
     let SimulationRunner {

@@ -15,8 +15,7 @@ mod tracing;
 mod upstream;
 mod workers;
 
-// The harness drives the simulation, which needs the x86-64 JIT
-#[cfg(all(test, target_arch = "x86_64"))]
+#[cfg(test)]
 mod test_support;
 
 pub use ::prover::gkr::prover_config::ProofProfile;

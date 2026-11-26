@@ -8,7 +8,6 @@ use execution_prover_model::MachineType;
 use itertools::Itertools;
 use log::{debug, trace};
 use riscv_transpiler::common_constants::rom::RomGeometry;
-#[cfg(target_arch = "x86_64")]
 use riscv_transpiler::common_constants::ROM_WORD_SIZE;
 #[cfg(target_arch = "x86_64")]
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
@@ -23,12 +22,23 @@ use riscv_transpiler::jit::{
 };
 use riscv_transpiler::vm::NonDeterminismCSRSource;
 use std::mem::replace;
-use std::ops::{Deref, DerefMut};
+#[cfg(target_arch = "x86_64")]
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::ptr::NonNull;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+#[cfg(target_arch = "x86_64")]
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
+#[cfg(target_arch = "x86_64")]
 use type_map::concurrent::TypeMap;
+
+#[cfg(any(test, not(target_arch = "x86_64")))]
+mod vm;
+
+#[cfg(test)]
+pub(crate) mod tests;
 
 pub(crate) struct Snapshot<R: DataTraceRanges, S> {
     pub index: usize,
@@ -82,8 +92,6 @@ impl EmptyInitsAndTeardownsStreamer {
     }
 }
 
-// Off x86-64 `run` is a stub (see below), so the fields it alone reads go unused.
-#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) struct SimulationRunner<
     ND: NonDeterminismCSRSource + Send + 'static,
     T: TracingType<A> + 'static,
@@ -91,6 +99,7 @@ pub(crate) struct SimulationRunner<
     S: DerefMut<Target = TraceChunk> + Send + 'static,
 > {
     pub batch_id: u64,
+    #[cfg(target_arch = "x86_64")]
     pub machine_type: MachineType,
     pub non_determinism_source: ND,
     pub free_trace_chunks_sender: Sender<S>,
@@ -107,6 +116,7 @@ pub(crate) struct SimulationRunner<
     pub total_elapsed: Duration,
     pub is_aborted: bool,
     pub ram_config: JitRunnerRam,
+    #[cfg(target_arch = "x86_64")]
     pub assume_canonical_mop_inputs: bool,
     /// The ROM of the circuit the run is proven in; the binary image must fit it.
     pub rom: RomGeometry,
@@ -132,7 +142,7 @@ impl<
         abort: Arc<AtomicBool>,
         empty_it_streamer: Option<EmptyInitsAndTeardownsStreamer>,
         ram_config: JitRunnerRam,
-        assume_canonical_mop_inputs: bool,
+        #[cfg(target_arch = "x86_64")] assume_canonical_mop_inputs: bool,
     ) -> Self {
         let tracing_data_producers = T::Producers::new(
             machine_type,
@@ -144,6 +154,7 @@ impl<
         Self {
             rom: unified_circuit.rom(),
             batch_id,
+            #[cfg(target_arch = "x86_64")]
             machine_type,
             non_determinism_source,
             free_trace_chunks_sender,
@@ -160,26 +171,9 @@ impl<
             total_elapsed: Default::default(),
             is_aborted: false,
             ram_config,
+            #[cfg(target_arch = "x86_64")]
             assume_canonical_mop_inputs,
         }
-    }
-
-    /// Simulation needs the x86-64 JIT (`riscv_transpiler::jit` is x86-64 only). The crate
-    /// still builds elsewhere, so that tools depending on the prover stack for other reasons
-    /// (the transpiler runner, flamegraphs) work on any host; proving itself does not.
-    #[cfg(not(target_arch = "x86_64"))]
-    pub fn run(
-        self,
-        _binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
-        _text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
-        _cycles_bound: Option<u32>,
-        _jit_cache: Arc<Mutex<TypeMap>>,
-        _memory_holder: &mut MemoryHolder,
-    ) -> Self {
-        panic!(
-            "BATCH[{}] execution proving needs the x86-64 JIT simulator, which is unavailable on this host architecture",
-            self.batch_id
-        );
     }
 
     #[cfg(target_arch = "x86_64")]

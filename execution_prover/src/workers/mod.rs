@@ -6,9 +6,13 @@ use std::thread::JoinHandle;
 /// Threads whose channels the collector waits on: a panic aborts the process
 /// (like a panic on the worker pool) instead of leaving the collector waiting.
 pub fn spawn_abort_on_panic(name: String, f: impl FnOnce() + Send + 'static) -> JoinHandle<()> {
+    #[cfg(not(target_arch = "x86_64"))]
+    let stack_size = 2 * worker::REQUIRED_STACK_SIZE;
+    #[cfg(target_arch = "x86_64")]
+    let stack_size = worker::REQUIRED_STACK_SIZE;
     std::thread::Builder::new()
         .name(name)
-        .stack_size(worker::REQUIRED_STACK_SIZE)
+        .stack_size(stack_size)
         .spawn(move || {
             if std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err() {
                 std::process::abort();

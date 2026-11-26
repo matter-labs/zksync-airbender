@@ -414,7 +414,6 @@ mod tests {
         }
     }
 
-    #[cfg(target_arch = "x86_64")]
     #[test]
     fn cpu_partial_tree_allocators_return_to_the_pool() {
         use crate::test_support::TestBackend;

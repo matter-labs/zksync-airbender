@@ -1,7 +1,10 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+#[cfg(target_arch = "x86_64")]
+use std::sync::Mutex;
 
 use riscv_transpiler::vm::SimpleTape;
+#[cfg(target_arch = "x86_64")]
 use type_map::concurrent::TypeMap;
 
 use crate::backend::ExecutionBackend;
@@ -64,8 +67,10 @@ pub(super) struct BinaryHolder<B: ExecutionBackend> {
     pub(super) profiles: Vec<ProofProfile>,
     pub(super) machine_type: MachineType,
     pub(super) binary_image: Arc<Box<[u32]>>,
+    #[cfg(target_arch = "x86_64")]
     pub(super) text_section: Arc<Box<[u32]>>,
     pub(super) cycles_bound: Option<u32>,
+    #[cfg(target_arch = "x86_64")]
     pub(super) jit_cache: Arc<Mutex<TypeMap>>,
     pub(super) instruction_tape: Arc<SimpleTape>,
     /// The BabyBear RISC-V family circuits; empty for `ExecutionKind::L1Wrap`.

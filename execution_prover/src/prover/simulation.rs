@@ -36,6 +36,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let free_trace_chunks_sender = free_trace_chunks_sender.clone();
             let free_allocators_receiver = self.free_allocators_receiver.clone();
             let binary_image = binary_holder.binary_image.clone();
+            #[cfg(not(target_arch = "x86_64"))]
+            let instruction_tape = binary_holder.instruction_tape.clone();
+            #[cfg(target_arch = "x86_64")]
             let text_section = binary_holder.text_section.clone();
             let cycles_bound = if binary_holder.execution_kind.is_l1_wrap() {
                 let limit = unified_circuit.get_domain_size() as u32 + 1;
@@ -43,11 +46,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             } else {
                 binary_holder.cycles_bound
             };
+            #[cfg(target_arch = "x86_64")]
             let jit_cache = binary_holder.jit_cache.clone();
             let work_results_sender = work_results_sender.clone();
             let abort = abort.clone();
             let worker = self.worker.clone();
             let ram_config = self.configuration.ram_config;
+            #[cfg(target_arch = "x86_64")]
             let assume_canonical_mop_inputs = self.configuration.assume_canonical_mop_inputs;
             spawn_abort_on_panic(format!("ab-simulator-{batch_id}"), move || {
                 let mut memory_holder = memory_holders_receiver
@@ -69,8 +74,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         machine_type,
                         unified_circuit,
                         binary_image,
+                        #[cfg(not(target_arch = "x86_64"))]
+                        instruction_tape,
+                        #[cfg(target_arch = "x86_64")]
                         text_section,
                         cycles_bound,
+                        #[cfg(target_arch = "x86_64")]
                         jit_cache,
                         &mut memory_holder,
                         non_determinism_source,
@@ -83,6 +92,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         abort,
                         &worker,
                         ram_config,
+                        #[cfg(target_arch = "x86_64")]
                         assume_canonical_mop_inputs,
                     ),
                     ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap => {
@@ -91,8 +101,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                             machine_type,
                             unified_circuit,
                             binary_image,
+                            #[cfg(not(target_arch = "x86_64"))]
+                            instruction_tape,
+                            #[cfg(target_arch = "x86_64")]
                             text_section,
                             cycles_bound,
+                            #[cfg(target_arch = "x86_64")]
                             jit_cache,
                             &mut memory_holder,
                             non_determinism_source,
@@ -105,6 +119,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                             abort,
                             &worker,
                             ram_config,
+                            #[cfg(target_arch = "x86_64")]
                             assume_canonical_mop_inputs,
                         )
                     }
