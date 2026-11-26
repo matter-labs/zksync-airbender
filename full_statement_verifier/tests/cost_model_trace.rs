@@ -420,14 +420,14 @@ fn calibration_fixture_encoding_round_trips_every_compiled_circuit() {
     use full_statement_verifier::host_utils::fixture_codec;
     use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
     use verifier_common::field::baby_bear::base::BabyBearField;
+    use verifier_common::test_circuits::ALL_CIRCUITS;
 
-    let dir = format!("{}/../cs/compiled_circuits", env!("CARGO_MANIFEST_DIR"));
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut checked = 0;
-    for entry in std::fs::read_dir(&dir).unwrap() {
-        let path = entry.unwrap().path();
-        if !path.to_string_lossy().ends_with("_layout_gkr.json") {
-            continue;
-        }
+    for circuit in ALL_CIRCUITS.iter() {
+        let path = root
+            .join(circuit.production_path)
+            .join("generated/layout.json");
         let artifact: GKRCircuitArtifact<BabyBearField> =
             serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         let decoded: GKRCircuitArtifact<BabyBearField> =
@@ -440,4 +440,5 @@ fn calibration_fixture_encoding_round_trips_every_compiled_circuit() {
         checked += 1;
     }
     assert!(checked > 0);
+    println!("Round-tripped {checked} BabyBear circuit layouts");
 }

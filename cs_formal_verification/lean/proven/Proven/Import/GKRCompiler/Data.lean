@@ -23,20 +23,20 @@ structure Pair extends SourceCapture where
 
 /-- The production layout file for each captured source family. -/
 def cachedLayout : String → Option String
-  | "add-sub" => some "add_sub_lui_auipc_mop"
-  | "bigint" => some "bigint_with_extended_control"
-  | "blake-g" => some "blake2_g_function"
-  | "blake-round" => some "blake2_with_extended_control"
-  | "jump-branch" => some "jump_branch_slt"
-  | "keccak" => some "keccak_special5"
-  | "mul-div" => some "unsigned_mul_div"
-  | "shift-binop" => some "shift_binop"
-  | "subword-memory" => some "mem_subword_only"
-  | "unified" => some "unified_reduced_machine"
-  | "word-memory" => some "mem_word_only"
-  | "keccak-column-parity" => some "keccak_column_parity"
-  | "keccak-theta-rho" => some "keccak_theta_rho"
-  | "keccak-chi5" => some "keccak_chi5"
+  | "add-sub" => some "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json"
+  | "bigint" => some "circuit_defs/bigint_with_control/generated/layout.json"
+  | "blake-g" => some "circuit_defs/blake2_g_function/generated/layout.json"
+  | "blake-round" => some "circuit_defs/blake2_with_compression/generated/layout.json"
+  | "jump-branch" => some "circuit_defs/unrolled_circuits/jump_branch_slt/generated/layout.json"
+  | "keccak" => some "circuit_defs/keccak_special5/generated/layout.json"
+  | "mul-div" => some "circuit_defs/unrolled_circuits/mul_div_unsigned/generated/layout.json"
+  | "shift-binop" => some "circuit_defs/unrolled_circuits/shift_binary/generated/layout.json"
+  | "subword-memory" => some "circuit_defs/unrolled_circuits/load_store_subword_only/generated/layout.json"
+  | "unified" => some "circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json"
+  | "word-memory" => some "circuit_defs/unrolled_circuits/load_store_word_only/generated/layout.json"
+  | "keccak-column-parity" => some "circuit_defs/keccak_column_parity/generated/layout.json"
+  | "keccak-theta-rho" => some "circuit_defs/keccak_theta_rho/generated/layout.json"
+  | "keccak-chi5" => some "circuit_defs/keccak_chi5/generated/layout.json"
   | _ => none
 
 /-- Read the source snapshot and decode its production circuit with the proved parser. -/
@@ -48,7 +48,7 @@ def parsePairJson (json : Lean.Json) : IO (Except String Pair) := do
     return .error "Expected a format-1 cached source snapshot"
   let some layout := cachedLayout snapshot.family
     | return .error s!"Unsupported source family: {snapshot.family}"
-  let text ← IO.FS.readFile s!"../../cs/compiled_circuits/{layout}_layout_gkr.json"
+  let text ← IO.FS.readFile s!"../../{layout}"
   match parseCircuit text with
   | .error reason => return .error reason
   | .ok circuit => return .ok { toSourceCapture := snapshot, circuit }

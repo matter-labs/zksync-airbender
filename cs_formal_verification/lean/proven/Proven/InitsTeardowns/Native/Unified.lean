@@ -18,7 +18,7 @@ theorem binding : UnifiedBindingClaim := by
   constructor <;> kernel_rfl
 
 prove_ram_product_wiring terminal_follows initial_follows for unifiedArtifact
-  from "../../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json" unified_inline
+  from "../../circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json" unified_inline
 
 /-- The teardown tree covers each native set once. -/
 theorem terminal_leaves : unifiedArtifact.terminal.leaves = unifiedArtifact.layout.leaves .terminal := by decide +kernel

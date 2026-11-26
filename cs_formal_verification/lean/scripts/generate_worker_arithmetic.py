@@ -262,7 +262,7 @@ def synthesis(pair):
 
 
 def main():
-    from check_compiler_captures import FAMILIES
+    from check_compiler_captures import FAMILIES, cached_layout
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description="Generate identities for the actual cached worker descriptions.")
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -270,7 +270,7 @@ def main():
     mode.add_argument("--write", action="store_true")
     args = parser.parse_args()
     for family in ("keccak-column-parity", "keccak-theta-rho", "keccak-chi5"):
-        path = root.parent.parent / "cs/compiled_circuits" / (FAMILIES[family] + "_layout_gkr.json")
+        path = cached_layout(FAMILIES[family])
         circuit = json.loads(path.read_text())
         cache_gates = []
         for layer in circuit["layers"]:

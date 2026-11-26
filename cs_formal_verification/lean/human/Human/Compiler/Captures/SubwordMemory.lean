@@ -9,7 +9,7 @@ public import Human.Circuits.SubwordMemory.Artifact
 
 namespace Airbender.Compiler.Captures.SubwordMemory
 
-import_circuit importedCircuit from "../../cs/compiled_circuits/mem_subword_only_layout_gkr.json" shared imported
+import_circuit importedCircuit from "../../circuit_defs/unrolled_circuits/load_store_subword_only/generated/layout.json" shared imported
 
 noncomputable def imported : NativeCapture := {
   cached := true, circuit := importedCircuit, family := "subword-memory", format_version := 1 }

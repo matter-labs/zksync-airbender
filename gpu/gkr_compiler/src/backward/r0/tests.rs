@@ -165,8 +165,7 @@ fn expanded(c: &CoeffLayer, row: usize, x: Ext) -> Ext {
 
 #[test]
 fn cpu_r0_matches_expression_corpus() {
-    let dir =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut layers = 0;
     let mut expected_layers = 0;
     for name in super::super::corpus_tests::CORPUS {
@@ -205,8 +204,7 @@ mod grouping;
 mod ordering;
 
 fn load_dag(name: &str) -> gkr_eval_ir::DagCircuit {
-    let directory =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let directory = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let artifact: cs::gkr_compiler::GKRCircuitArtifact<Bf> =
         serde_json::from_slice(&std::fs::read(directory.join(name)).unwrap()).unwrap();
     gkr_eval_ir::lower_dag(&artifact).unwrap()

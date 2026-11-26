@@ -436,14 +436,21 @@ mod tests {
         use cs::gkr_compiler::GKRCircuitArtifact;
         use field::baby_bear::base::BabyBearField;
 
-        let directory = repo_root().join("cs/compiled_circuits");
-        for name in std::fs::read_dir(&directory)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-            .filter(|name| name.ends_with("_layout_gkr.json"))
+        let circuits = repo_root().join("circuit_defs");
+        let mut checked = 0;
+        for crate_dir in [circuits.clone(), circuits.join("unrolled_circuits")]
+            .iter()
+            .flat_map(|root| std::fs::read_dir(root).unwrap())
         {
+            let crate_dir = crate_dir.unwrap();
+            let name = crate_dir.file_name().into_string().unwrap();
+            let layout = crate_dir.path().join("generated/layout.json");
+            if name.contains("_proth120_") || !layout.is_file() {
+                continue;
+            }
             let artifact: GKRCircuitArtifact<BabyBearField> =
-                serde_json::from_slice(&std::fs::read(directory.join(&name)).unwrap()).unwrap();
+                serde_json::from_slice(&std::fs::read(layout).unwrap()).unwrap();
+            checked += 1;
             let dag =
                 gkr_eval_ir::lower_dag(&artifact).unwrap_or_else(|error| panic!("{name}: {error}"));
             let continuations =
@@ -462,6 +469,7 @@ mod tests {
                 );
             }
         }
+        assert!(checked >= 15, "only checked {checked} BabyBear layouts");
     }
 
     #[test]

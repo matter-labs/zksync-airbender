@@ -5,23 +5,35 @@ use field::{Field, PrimeField};
 
 #[test]
 fn active_delegations_cannot_use_timestamp_zero() {
-    let names = [
-        "bigint_with_extended_control",
-        "blake2_with_extended_control",
-        "blake2_g_function",
-        "keccak_special5",
-        "keccak_chi5",
-        "keccak_column_parity",
-        "keccak_theta_rho",
+    let circuits = [
+        ("bigint_with_extended_control", "bigint_with_control"),
+        ("blake2_with_extended_control", "blake2_with_compression"),
+        ("blake2_g_function", "blake2_g_function"),
+        ("keccak_special5", "keccak_special5"),
+        ("keccak_chi5", "keccak_chi5"),
+        ("keccak_column_parity", "keccak_column_parity"),
+        ("keccak_theta_rho", "keccak_theta_rho"),
     ];
-    for (name, variant) in names
-        .into_iter()
-        .flat_map(|name| ["gkr", "no_caches_gkr"].map(|variant| (name, variant)))
-    {
-        let path = format!(
-            "{}/compiled_circuits/{name}_layout_{variant}.json",
-            env!("CARGO_MANIFEST_DIR")
-        );
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let layouts = circuits.into_iter().flat_map(|(name, circuit_crate)| {
+        [
+            (
+                name,
+                "cached",
+                root.join(format!(
+                    "../circuit_defs/{circuit_crate}/generated/layout.json"
+                )),
+            ),
+            (
+                name,
+                "no-cache",
+                root.join(format!(
+                    "compiled_circuits/{name}_layout_no_caches_gkr.json"
+                )),
+            ),
+        ]
+    });
+    for (name, variant, path) in layouts {
         let layout: GKRCircuitArtifact<BabyBearField> =
             serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
         let state = layout.memory_layout.delegation_state.as_ref().unwrap();

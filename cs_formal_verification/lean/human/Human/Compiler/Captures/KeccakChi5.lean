@@ -8,7 +8,7 @@ public import Human.Circuits.KeccakSplit.Chi5.Artifact
 @[expose] public section
 namespace Airbender.Compiler.Captures.KeccakChi5
 
-import_circuit importedCircuit from "../../cs/compiled_circuits/keccak_chi5_layout_gkr.json" shared imported
+import_circuit importedCircuit from "../../circuit_defs/keccak_chi5/generated/layout.json" shared imported
 
 noncomputable def imported : NativeCapture := {
   cached := true, circuit := importedCircuit, family := "keccak-chi5", format_version := 1 }

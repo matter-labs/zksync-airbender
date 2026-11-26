@@ -97,7 +97,7 @@ def main : IO UInt32 := do
       ⟨c.placement_data.entries.push (48, .BaseLayerMemory 15)⟩}))
       "range query with ambiguous logical placement rejected"
     check (source == AddSub.importedCircuitSourceBytes) "embedded source equals current artifact bytes"
-    let cachedInitsSource ← IO.FS.readFile "../../cs/compiled_circuits/inits_and_teardowns_layout_gkr.json"
+    let cachedInitsSource ← IO.FS.readFile "../../circuit_defs/unrolled_circuits/inits_and_teardowns/generated/layout.json"
     check (cachedInitsSource == InitsTeardowns.sharedLayoutCircuitSourceBytes)
       "shared cached inits/teardowns import: embedded source equals current artifact bytes"
     Tests.TraceImport.run
@@ -519,7 +519,7 @@ def main : IO UInt32 := do
     check (rejected emptyGroup.splitTimestampGroups && rejected emptyGroup.splitMemoryPorts)
       "split Keccak: empty timestamp group rejected"
     check (rejected (Circuit.delegationColumns theta)) "split Keccak: grouped layout rejected by the ordinary importer"
-    let cached := parseCircuit (← IO.FS.readFile "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+    let cached := parseCircuit (← IO.FS.readFile "../../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json")
     check (!rejected cached) "cached sibling decoded with the standard JSON parser"
     return (0 : UInt32)
   catch e =>

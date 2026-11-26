@@ -1,4 +1,6 @@
-use super::common::{circuit_in_filter, ensure_memory_trace_consistency, log_prove_decision};
+use super::common::{
+    circuit_definition_dir, circuit_in_filter, ensure_memory_trace_consistency, log_prove_decision,
+};
 use super::delegations::deserialize_from_file;
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::cs::tables::TableDriver;
@@ -360,7 +362,7 @@ pub fn prove_built_family_trace_with_rs_source(
 /// Per-variant compiled-circuit JSON path
 pub fn circuit_path(stem: &str) -> String {
     if USE_GKR_WITH_CACHES {
-        format!("../cs/compiled_circuits/{stem}_layout_gkr.json")
+        format!("{}/generated/layout.json", circuit_definition_dir(stem))
     } else {
         format!("../cs/compiled_circuits/{stem}_layout_no_caches_gkr.json")
     }

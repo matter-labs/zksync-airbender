@@ -16,8 +16,7 @@ fn hardware() -> R0PartitionHardware {
 
 #[test]
 fn cpu_partition_selection_uses_current_device_geometry() {
-    let directory =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let directory = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut selected_split = false;
     for name in CORPUS {
         let artifact: cs::gkr_compiler::GKRCircuitArtifact<Bf> =

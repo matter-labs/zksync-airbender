@@ -149,7 +149,15 @@ mod test {
         build_unified_artifact_core::<Proth120, BabyBearField>(true, trace_len_log2, 1, L1_WRAP_ROM)
     }
 
-    fn witness(layout: &GKRCircuitArtifact<Proth120>) -> String {
+    /// Writes the layout, SSA and witness evaluation function to `generated/`.
+    #[test]
+    fn generate() {
+        skip_if_ci!();
+
+        let layout = compile(l1_wrap::TRACE_LEN_LOG2);
+        let dst = std::fs::File::create("generated/layout.json").unwrap();
+        serde_json::to_writer_pretty(dst, &layout).unwrap();
+
         let ssa = dump_ssa_witness_eval_form::<Proth120>(
             &|cs| unified_register_all_tables(cs, L1_WRAP_ROM),
             &|cs| {
@@ -160,23 +168,15 @@ mod test {
                 >(cs, L1_WRAP_ROM)
             },
         );
-        witness_eval_generator::derive_from_ssa::derive_from_gkr_ssa(
-            &ssa, layout, false, "Proth120",
-        )
-        .to_string()
-    }
+        let dst = std::fs::File::create("generated/ssa.json").unwrap();
+        serde_json::to_writer_pretty(dst, &ssa).unwrap();
 
-    /// Writes `generated/layout.json` and `generated/witness_generation_fn.rs`.
-    #[test]
-    fn generate() {
-        skip_if_ci!();
-
-        let layout = compile(l1_wrap::TRACE_LEN_LOG2);
-        let mut dst = std::fs::File::create("generated/layout.json").unwrap();
-        serde_json::to_writer_pretty(&mut dst, &layout).unwrap();
+        let witness = witness_eval_generator::derive_from_ssa::derive_from_gkr_ssa(
+            &ssa, &layout, false, "Proth120",
+        );
         std::fs::File::create("generated/witness_generation_fn.rs")
             .unwrap()
-            .write_all(witness(&layout).as_bytes())
+            .write_all(witness.to_string().as_bytes())
             .unwrap();
     }
 }

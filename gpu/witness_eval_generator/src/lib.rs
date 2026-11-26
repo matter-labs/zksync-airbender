@@ -626,8 +626,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "add_sub_lui_auipc_mop",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/add_sub_lui_auipc_mop_ssa_gkr.json",
+            layout_json: "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json",
+            ssa_json: "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -635,8 +635,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "bigint_with_extended_control",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/bigint_with_extended_control_ssa_gkr.json",
+            layout_json: "circuit_defs/bigint_with_control/generated/layout.json",
+            ssa_json: "circuit_defs/bigint_with_control/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/bigint_with_control/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -644,8 +644,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "blake2_g_function",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/blake2_g_function_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/blake2_g_function_ssa_gkr.json",
+            layout_json: "circuit_defs/blake2_g_function/generated/layout.json",
+            ssa_json: "circuit_defs/blake2_g_function/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/blake2_g_function/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -653,8 +653,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "blake2_with_extended_control",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/blake2_with_extended_control_ssa_gkr.json",
+            layout_json: "circuit_defs/blake2_with_compression/generated/layout.json",
+            ssa_json: "circuit_defs/blake2_with_compression/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/blake2_with_compression/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -662,8 +662,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "jump_branch_slt",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/jump_branch_slt_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/jump_branch_slt_ssa_gkr.json",
+            layout_json: "circuit_defs/unrolled_circuits/jump_branch_slt/generated/layout.json",
+            ssa_json: "circuit_defs/unrolled_circuits/jump_branch_slt/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/unrolled_circuits/jump_branch_slt/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -671,8 +671,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "keccak_chi5",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/keccak_chi5_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/keccak_chi5_ssa_gkr.json",
+            layout_json: "circuit_defs/keccak_chi5/generated/layout.json",
+            ssa_json: "circuit_defs/keccak_chi5/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/keccak_chi5/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -680,8 +680,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "keccak_column_parity",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/keccak_column_parity_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/keccak_column_parity_ssa_gkr.json",
+            layout_json: "circuit_defs/keccak_column_parity/generated/layout.json",
+            ssa_json: "circuit_defs/keccak_column_parity/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/keccak_column_parity/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -689,8 +689,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "keccak_special5",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/keccak_special5_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/keccak_special5_ssa_gkr.json",
+            layout_json: "circuit_defs/keccak_special5/generated/layout.json",
+            ssa_json: "circuit_defs/keccak_special5/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/keccak_special5/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -698,8 +698,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "keccak_theta_rho",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/keccak_theta_rho_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/keccak_theta_rho_ssa_gkr.json",
+            layout_json: "circuit_defs/keccak_theta_rho/generated/layout.json",
+            ssa_json: "circuit_defs/keccak_theta_rho/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/keccak_theta_rho/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -707,8 +707,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "mem_subword_only",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/mem_subword_only_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/mem_subword_only_ssa_gkr.json",
+            layout_json: "circuit_defs/unrolled_circuits/load_store_subword_only/generated/layout.json",
+            ssa_json: "circuit_defs/unrolled_circuits/load_store_subword_only/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/unrolled_circuits/load_store_subword_only/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -716,8 +716,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "mem_word_only",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/mem_word_only_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/mem_word_only_ssa_gkr.json",
+            layout_json: "circuit_defs/unrolled_circuits/load_store_word_only/generated/layout.json",
+            ssa_json: "circuit_defs/unrolled_circuits/load_store_word_only/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/unrolled_circuits/load_store_word_only/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -725,8 +725,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "shift_binop",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/shift_binop_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/shift_binop_ssa_gkr.json",
+            layout_json: "circuit_defs/unrolled_circuits/shift_binary/generated/layout.json",
+            ssa_json: "circuit_defs/unrolled_circuits/shift_binary/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/unrolled_circuits/shift_binary/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -734,8 +734,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "unified_reduced_machine",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/unified_reduced_machine_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/unified_reduced_machine_ssa_gkr.json",
+            layout_json: "circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json",
+            ssa_json: "circuit_defs/unrolled_circuits/unified_reduced_machine/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/unrolled_circuits/unified_reduced_machine/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -743,8 +743,8 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "unsigned_mul_div",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/unsigned_mul_div_layout_gkr.json",
-            ssa_json: "cs/compiled_circuits/unsigned_mul_div_ssa_gkr.json",
+            layout_json: "circuit_defs/unrolled_circuits/mul_div_unsigned/generated/layout.json",
+            ssa_json: "circuit_defs/unrolled_circuits/mul_div_unsigned/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/unrolled_circuits/mul_div_unsigned/generated/witness_generation_fn.cuh",
         field: GeneratedField::BabyBear,
@@ -753,7 +753,7 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
         id: "unified_reduced_machine_proth120_2_21",
         inputs: GeneratorInputs {
             layout_json: "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json",
-            ssa_json: "cs/compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
+            ssa_json: "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/ssa.json",
         },
         committed_cuh: "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/witness_generation_fn.cuh",
         field: GeneratedField::Proth120,

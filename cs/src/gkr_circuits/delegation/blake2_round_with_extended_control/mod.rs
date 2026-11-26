@@ -322,9 +322,7 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::gkr_compiler::compile_delegation_circuit_into_gkr;
     use crate::gkr_compiler::compile_delegation_circuit_into_gkr_without_caches;
-    use crate::gkr_compiler::dump_ssa_witness_eval_form;
     use crate::utils::serialize_to_file;
 
     // All tests below compile the selected (re-exported) arithmetization.
@@ -333,42 +331,6 @@ mod test {
         let dir = std::env::var("AIRBENDER_COMPILED_CIRCUITS_OUT")
             .unwrap_or_else(|_| "compiled_circuits".to_string());
         format!("{}/{}", dir, name)
-    }
-
-    #[test]
-    fn compile_blake2_with_extended_control_into_gkr() {
-        skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
-
-        let gkr_compiled = compile_delegation_circuit_into_gkr::<BabyBearField>(
-            &|cs| blake2_with_extended_control_table_addition_fn(cs),
-            &|cs| {
-                let _ = define_blake2_with_extended_control_delegation_circuit(cs);
-            },
-            20,
-        );
-
-        serialize_to_file(
-            &gkr_compiled,
-            &out_path("blake2_with_extended_control_layout_gkr.json"),
-        );
-    }
-
-    #[test]
-    fn compile_blake2_with_extended_control_witness_graph() {
-        skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
-
-        let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
-            &|cs| blake2_with_extended_control_table_addition_fn(cs),
-            &|cs| {
-                let _ = define_blake2_with_extended_control_delegation_circuit(cs);
-            },
-        );
-        serialize_to_file(
-            &ssa_forms,
-            &out_path("blake2_with_extended_control_ssa_gkr.json"),
-        );
     }
 
     #[test]

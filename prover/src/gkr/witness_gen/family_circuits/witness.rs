@@ -924,7 +924,7 @@ mod tests {
 
     fn count_one_timestamp_lookup(is_delegation: bool) -> (u32, u32, u32) {
         let path = format!(
-            "{}/../cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
+            "{}/../circuit_defs/bigint_with_control/generated/layout.json",
             env!("CARGO_MANIFEST_DIR")
         );
         let mut circuit: GKRCircuitArtifact<BabyBearField> =

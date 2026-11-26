@@ -26,6 +26,29 @@ FAMILIES = {
 }
 
 
+CIRCUIT_CRATES = {
+    'add_sub_lui_auipc_mop': 'unrolled_circuits/add_sub_lui_auipc_mop',
+    'bigint_with_extended_control': 'bigint_with_control',
+    'blake2_g_function': 'blake2_g_function',
+    'blake2_with_extended_control': 'blake2_with_compression',
+    'inits_and_teardowns': 'unrolled_circuits/inits_and_teardowns',
+    'jump_branch_slt': 'unrolled_circuits/jump_branch_slt',
+    'keccak_chi5': 'keccak_chi5',
+    'keccak_column_parity': 'keccak_column_parity',
+    'keccak_special5': 'keccak_special5',
+    'keccak_theta_rho': 'keccak_theta_rho',
+    'mem_subword_only': 'unrolled_circuits/load_store_subword_only',
+    'mem_word_only': 'unrolled_circuits/load_store_word_only',
+    'shift_binop': 'unrolled_circuits/shift_binary',
+    'unified_reduced_machine': 'unrolled_circuits/unified_reduced_machine',
+    'unsigned_mul_div': 'unrolled_circuits/mul_div_unsigned',
+}
+
+
+def cached_layout(stem):
+    return REPO / 'circuit_defs' / CIRCUIT_CRATES[stem] / 'generated/layout.json'
+
+
 def read(path):
     return json.loads(path.read_bytes(), object_pairs_hook=reject_duplicates, parse_constant=reject_constant)
 
@@ -74,21 +97,20 @@ def check_setup_circuits():
 
 
 def check_cached_layouts():
-    checked = set()
+    suffix = '_layout_no_caches_gkr.json'
+    checked = 0
     for path in imported_paths():
-        name = path.name.replace('_layout_no_caches_gkr.json', '')
-        name = name.replace('_layout_gkr.json', '')
-        if name in checked:
+        if not path.name.endswith(suffix):
             continue
-        checked.add(name)
-        parent = path.parent
-        cached = read(parent / (name + '_layout_gkr.json'))
-        plain = read(parent / (name + '_layout_no_caches_gkr.json'))
+        name = path.name[:-len(suffix)]
+        cached = read(cached_layout(name))
+        plain = read(path)
         cached.pop('layers')
         plain.pop('layers')
         if canonical(cached) != canonical(plain):
             raise ValueError(f'Cached constraint description differs from no-cache layout: {name}')
-    print(f'PASS {len(checked)} complete cached/no-cache constraint descriptions')
+        checked += 1
+    print(f'PASS {checked} complete cached/no-cache constraint descriptions')
 
 
 def check():
@@ -117,7 +139,7 @@ def check():
             raise ValueError(f'Compiler source snapshot differs from its sidecar: {family}')
         if set(capture) != {'format_version', 'cached', 'family', 'source'}:
             raise ValueError(f'Source capture contains fields outside its source snapshot: {family}')
-        expected_path = f'../../cs/compiled_circuits/{circuit}_layout_gkr.json'
+        expected_path = f'../../{cached_layout(circuit).relative_to(REPO).as_posix()}'
         readers = [path for path in (ROOT / 'human/Human/Compiler/Captures').glob('*.lean')
                    if f'family := "{family}"' in path.read_text()]
         if len(readers) != 1 or f'import_circuit importedCircuit from "{expected_path}" shared imported' not in readers[0].read_text():

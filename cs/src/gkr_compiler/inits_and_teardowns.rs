@@ -260,17 +260,4 @@ mod test {
             "compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json",
         );
     }
-
-    #[test]
-    fn compile_inits_and_teardowns_into_gkr() {
-        skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
-
-        let gkr_compiled = compile_inits_and_teardowns_circuit::<BabyBearField, 2>(8, 24, true);
-
-        serialize_to_file(
-            &gkr_compiled,
-            "compiled_circuits/inits_and_teardowns_layout_gkr.json",
-        );
-    }
 }

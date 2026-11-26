@@ -50,16 +50,16 @@ def cachedLookup (circuit : Circuit) (layer index : Nat) :
 
 /-! ## The cached add-sub circuit (CPU), imported with the `shared` form -/
 
--- add_sub_lui_auipc_mop_layout_gkr.json,
+-- circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json,
 -- $.layers[0].gates[16].enforced_relation.EnforceSingleMaxQuadraticConstraint.input.quadratic_terms[0]:
 -- [{"BaseLayerWitness": 8}, [..., [268295646, {"BaseLayerMemory": 13}]]]
 example : quadraticTerm Captures.AddSub.imported.circuit 0 16 0 1 =
     some (.BaseLayerWitness 8, 268295646, .BaseLayerMemory 13) := by decide +kernel
 
--- add_sub_lui_auipc_mop_layout_gkr.json, $.placement_data["46"]: {"BaseLayerWitness": 20}
+-- circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json, $.placement_data["46"]: {"BaseLayerWitness": 20}
 example : placement Captures.AddSub.imported.circuit 46 = some (.BaseLayerWitness 20) := by decide +kernel
 
--- add_sub_lui_auipc_mop_layout_gkr.json, $.layers[0].cached_relations[8]:
+-- circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json, $.layers[0].cached_relations[8]:
 -- [{"Cached": {"layer": 0, "offset": 8}}, {"SingleColumnLookup": {"relation": {"input": {"linear_terms":
 -- [[1744830467, {"BaseLayerMemory": 20}], [268435454, {"BaseLayerMemory": 0}], [133099247, {"BaseLayerWitness": 16}]],
 -- "constant": 0}, "lookup_set_index": 2}, ...}}]
@@ -69,16 +69,16 @@ example : cachedLookup Captures.AddSub.imported.circuit 0 8 =
 
 /-! ## The cached chi circuit (worker), imported with the `shared` form -/
 
--- keccak_chi5_layout_gkr.json,
+-- circuit_defs/keccak_chi5/generated/layout.json,
 -- $.layers[0].gates[31].enforced_relation.EnforceSingleMaxQuadraticConstraint.input.linear_terms[0]:
 -- [1073741816, {"BaseLayerWitness": 0}]
 example : linearTerm Captures.KeccakChi5.imported.circuit 0 31 0 = some (1073741816, .BaseLayerWitness 0) := by
   decide +kernel
 
--- keccak_chi5_layout_gkr.json, $.placement_data["100"]: {"BaseLayerWitness": 46}
+-- circuit_defs/keccak_chi5/generated/layout.json, $.placement_data["100"]: {"BaseLayerWitness": 46}
 example : placement Captures.KeccakChi5.imported.circuit 100 = some (.BaseLayerWitness 46) := by decide +kernel
 
--- keccak_chi5_layout_gkr.json, $.layers[0].cached_relations[26]:
+-- circuit_defs/keccak_chi5/generated/layout.json, $.layers[0].cached_relations[26]:
 -- [{"Cached": {"layer": 0, "offset": 26}}, {"SingleColumnLookup": {"relation": {"input": {"linear_terms":
 -- [[1073741824, {"BaseLayerMemory": 64}], [939524097, {"BaseLayerMemory": 63}]], "constant": 0},
 -- "lookup_set_index": 0}, ...}}]

@@ -9,7 +9,7 @@ operations, plus Airbender's custom operations and delegations. A separate
 [equivalence](lean/human/Human/ISA/Sail/Theorems.lean) connects it to the official Sail RISC-V model.
 Circuit claims use the RV32 specification.
 
-The cached and no-cache JSON files in `cs/compiled_circuits/` have the same constraint sections.
+Each no-cache JSON in `cs/compiled_circuits/` has the same constraint sections as the circuit crate’s cached layout.
 Only their compiled GKR layers can differ. The claims cover the shared constraint description in both cache modes.
 Cached captures bind native base-field gates and scalar caches to the shared arithmetic equations.
 Cached CPU and worker certificates supply the native machine targets. Each certificate

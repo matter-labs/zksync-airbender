@@ -76,28 +76,36 @@ fn check_comparisons<F: PrimeField>(name: &str, artifact: &GKRCircuitArtifact<F>
 
 #[test]
 fn committed_layouts_round_trip_and_compare_every_ungrouped_access() {
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/compiled_circuits");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let circuits = root.join("circuit_defs");
     let mut checked = 0;
-    for entry in std::fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        let name = path.file_name().unwrap().to_str().unwrap().to_owned();
-        if !name.contains("_layout_") || !name.ends_with(".json") {
+    for crate_dir in [circuits.clone(), circuits.join("unrolled_circuits")]
+        .iter()
+        .flat_map(|dir| std::fs::read_dir(dir).unwrap())
+    {
+        let crate_dir = crate_dir.unwrap();
+        let path = crate_dir.path().join("generated/layout.json");
+        if !path.is_file() {
             continue;
         }
-        let text = std::fs::read_to_string(&path).unwrap();
-        if name.contains("proth120") {
+        let name = crate_dir.file_name().into_string().unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        if name.contains("_proth120_") {
             check_comparisons(&name, &round_trip::<Proth120>(&text));
         } else {
             check_comparisons(&name, &round_trip::<BabyBearField>(&text));
         }
         checked += 1;
     }
-    let wrap_layout = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json"
-    );
-    let text = std::fs::read_to_string(wrap_layout).unwrap();
-    check_comparisons(wrap_layout, &round_trip::<Proth120>(&text));
-    checked += 1;
+    for entry in std::fs::read_dir(root.join("cs/compiled_circuits")).unwrap() {
+        let entry = entry.unwrap();
+        let name = entry.file_name().into_string().unwrap();
+        if !name.ends_with("_layout_no_caches_gkr.json") {
+            continue;
+        }
+        let text = std::fs::read_to_string(entry.path()).unwrap();
+        check_comparisons(&name, &round_trip::<BabyBearField>(&text));
+        checked += 1;
+    }
     assert!(checked >= 31, "{checked}");
 }

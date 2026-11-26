@@ -21,8 +21,7 @@ const GROUP_E4: u16 = 7;
 const PARTS: [usize; 5] = [1, 2, 4, 8, 16];
 
 fn load_dag(name: &str) -> gkr_eval_ir::DagCircuit {
-    let directory =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let directory = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let artifact: cs::gkr_compiler::GKRCircuitArtifact<Bf> =
         serde_json::from_slice(&std::fs::read(directory.join(name)).unwrap()).unwrap();
     gkr_eval_ir::lower_dag(&artifact).unwrap()

@@ -9,7 +9,7 @@ public import Human.Circuits.MulDiv.Artifact
 
 namespace Airbender.Compiler.Captures.MulDiv
 
-import_circuit importedCircuit from "../../cs/compiled_circuits/unsigned_mul_div_layout_gkr.json" shared imported
+import_circuit importedCircuit from "../../circuit_defs/unrolled_circuits/mul_div_unsigned/generated/layout.json" shared imported
 
 noncomputable def imported : NativeCapture := {
   cached := true, circuit := importedCircuit, family := "mul-div", format_version := 1 }

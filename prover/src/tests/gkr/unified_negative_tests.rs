@@ -19,6 +19,8 @@ use std::alloc::Global;
 use worker::Worker;
 
 const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
+const UNIFIED_LAYOUT: &str =
+    "../circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json";
 
 const XOR_ROTATE_TABLE_IDS: [u32; 4] = [
     TableType::XorRotate16 as u32,
@@ -63,7 +65,7 @@ fn build_satisfying_trace_with_mutation(
     let worker = Worker::new_with_num_threads(8);
 
     let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-        deserialize_from_file("../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json")
+        deserialize_from_file(UNIFIED_LAYOUT)
     } else {
         deserialize_from_file(
             "../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
@@ -107,8 +109,7 @@ fn honest_trace_with_decoder_table() -> (
 ) {
     type CountersT = DelegationsAndUnifiedCounters;
     let worker = Worker::new_with_num_threads(8);
-    let circuit: GKRCircuitArtifact<BabyBearField> =
-        deserialize_from_file("../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json");
+    let circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(UNIFIED_LAYOUT);
     let config = ProgramConfig::multi_family_smoke_blake_compression();
     let vm = run_vm_and_capture::<CountersT, riscv_transpiler::ir::ReducedMachineDecoderConfig>(
         &config, &worker,
@@ -1104,7 +1105,7 @@ fn baseline_trace_is_memory_consistent() {
     let worker = Worker::new_with_num_threads(8);
 
     let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-        deserialize_from_file("../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json")
+        deserialize_from_file(UNIFIED_LAYOUT)
     } else {
         deserialize_from_file(
             "../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
@@ -1153,7 +1154,7 @@ fn generate_malicious_unified_proof(
     let worker = Worker::new_with_num_threads(8);
 
     let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-        deserialize_from_file("../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json")
+        deserialize_from_file(UNIFIED_LAYOUT)
     } else {
         deserialize_from_file(
             "../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",

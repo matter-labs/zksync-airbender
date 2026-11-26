@@ -21,47 +21,9 @@ for option in "$@"; do
     esac
 done
 
-# Keep compiler layouts and SSA in sync with the production artifacts.
-RUST_MIN_STACK=100000000 cargo test -p cs --lib -- \
-    _into_gkr _into_no_caches_gkr _witness_graph
-RUST_MIN_STACK=100000000 cargo test -p witness_eval_generator --lib -- \
-    gen_for_gkr
-
-circuit_names=(
-    "bigint_with_control"
-    "blake2_g_function"
-    "blake2_with_compression"
-    "keccak_chi5"
-    "keccak_column_parity"
-    "keccak_special5"
-    "keccak_theta_rho"
-)
-
-unrolled_circuit_names=(
-    "add_sub_lui_auipc_mop"
-    "inits_and_teardowns"
-    "jump_branch_slt"
-    "load_store_subword_only"
-    "load_store_word_only"
-    "mul_div_unsigned"
-    "shift_binary"
-    "unified_reduced_machine"
-    "unified_reduced_machine_2_22"
-    "unified_reduced_machine_proth120_2_21"
-    "unified_reduced_machine_proth120_2_22"
-)
-
-for CIRCUIT_NAME in "${circuit_names[@]}"; do
-    echo $CIRCUIT_NAME
-
-    (cd circuit_defs/${CIRCUIT_NAME} && RUST_MIN_STACK=100000000 cargo test generate)
-done
-
-for CIRCUIT_NAME in "${unrolled_circuit_names[@]}"; do
-    echo $CIRCUIT_NAME
-
-    (cd circuit_defs/unrolled_circuits/${CIRCUIT_NAME} && RUST_MIN_STACK=100000000 cargo test generate)
-done
+# Generate crate layouts/SSAs and the compiler's no-cache layouts before their consumers.
+RUST_MIN_STACK=100000000 bash gkr_test.sh unified circuits
+RUST_MIN_STACK=100000000 cargo test -p witness_eval_generator --lib -- gen_for_gkr
 
 (RUST_MIN_STACK=100000000 cargo test -p unified_reduced_machine_2_22 --profile cli --lib \
     test::witness_eval_fn_matches_sibling -- --exact)
@@ -75,8 +37,21 @@ cargo run -p gpu_witness_eval_generator --bin regenerate_committed
 
 for SCHEDULE in cs/compiled_circuits/*_schedule_b4_gkr.json; do
     STEM=$(basename "$SCHEDULE" _schedule_b4_gkr.json)
+    case "$STEM" in
+        bigint_with_extended_control) PACKAGE=bigint_with_control ;;
+        blake2_with_extended_control) PACKAGE=blake2_with_compression ;;
+        mem_subword_only) PACKAGE=load_store_subword_only ;;
+        mem_word_only) PACKAGE=load_store_word_only ;;
+        shift_binop) PACKAGE=shift_binary ;;
+        unsigned_mul_div) PACKAGE=mul_div_unsigned ;;
+        *) PACKAGE=$STEM ;;
+    esac
+    CIRCUIT_DIR="circuit_defs/$PACKAGE"
+    if [[ ! -d "$CIRCUIT_DIR" ]]; then
+        CIRCUIT_DIR="circuit_defs/unrolled_circuits/$PACKAGE"
+    fi
     cargo run --release -p gpu_gkr_compiler --features search --bin gkr-forward-artifact -- \
-        --if-stale --circuit "$STEM" --layout "cs/compiled_circuits/${STEM}_layout_gkr.json" \
+        --if-stale --circuit "$STEM" --layout "$CIRCUIT_DIR/generated/layout.json" \
         --output "$SCHEDULE" --seed 42 --cache-buckets 4 --population 64 --evaluations 1024
 done
 

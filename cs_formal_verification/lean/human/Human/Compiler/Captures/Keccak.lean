@@ -9,7 +9,7 @@ public import Human.Circuits.Keccak.Artifact
 
 namespace Airbender.Compiler.Captures.Keccak
 
-import_circuit importedCircuit from "../../cs/compiled_circuits/keccak_special5_layout_gkr.json" shared imported
+import_circuit importedCircuit from "../../circuit_defs/keccak_special5/generated/layout.json" shared imported
 
 noncomputable def imported : NativeCapture := {
   cached := true, circuit := importedCircuit, family := "keccak", format_version := 1 }

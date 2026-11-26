@@ -9,7 +9,7 @@ public import Human.Circuits.JumpBranchSlt.Artifact
 
 namespace Airbender.Compiler.Captures.JumpBranch
 
-import_circuit importedCircuit from "../../cs/compiled_circuits/jump_branch_slt_layout_gkr.json" shared imported
+import_circuit importedCircuit from "../../circuit_defs/unrolled_circuits/jump_branch_slt/generated/layout.json" shared imported
 
 noncomputable def imported : NativeCapture := {
   cached := true, circuit := importedCircuit, family := "jump-branch", format_version := 1 }

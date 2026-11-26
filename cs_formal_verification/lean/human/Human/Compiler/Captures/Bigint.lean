@@ -9,7 +9,7 @@ public import Human.Circuits.Bigint.Artifact
 
 namespace Airbender.Compiler.Captures.Bigint
 
-import_circuit importedCircuit from "../../cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json" shared imported
+import_circuit importedCircuit from "../../circuit_defs/bigint_with_control/generated/layout.json" shared imported
 
 noncomputable def imported : NativeCapture := {
   cached := true, circuit := importedCircuit, family := "bigint", format_version := 1 }

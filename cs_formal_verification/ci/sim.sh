@@ -25,8 +25,8 @@ IMAGE=${FVCI_IMAGE:-fvci:local}
 
 src_tar() { # rev out.tar: what actions/checkout gives the job (only the paths the Lean build reads)
   local jsons  # the circuit JSONs the Lean sources and the lakefile name (the tests also read a cached layout)
-  jsons=$(git -C "$REPO" grep -ohE 'compiled_circuits/[A-Za-z0-9_.-]+\.json' "$1" -- cs_formal_verification/lean |
-    sort -u | sed 's|^|cs/|')
+  jsons=$(git -C "$REPO" grep -ohE '(cs/compiled_circuits/[A-Za-z0-9_.-]+|circuit_defs/([A-Za-z0-9_-]+/)+generated/layout)\.json' "$1" -- cs_formal_verification/lean |
+    sort -u)
   local linked  # the files outside cs_formal_verification that its guides link (the review check resolves them)
   linked=$(python3 - "$REPO" "$1" <<'PY'
 import posixpath, re, subprocess, sys

@@ -603,9 +603,7 @@ mod test {
 
     use super::*;
 
-    use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
-    use crate::gkr_compiler::dump_ssa_witness_eval_form;
     use crate::gkr_compiler::GKRCircuitArtifact;
 
     use crate::utils::serialize_to_file;
@@ -616,7 +614,6 @@ mod test {
         use field::Field;
 
         let layouts = [
-            include_str!("../../../compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json"),
             include_str!("../../../compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"),
             include_str!("../../../../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json"),
         ];
@@ -699,40 +696,6 @@ mod test {
     //                 && contains_variable(expr, mulmod_intermediate)
     //         )));
     // }
-
-    #[test]
-    fn compile_add_sub_lui_auipc_mop_into_gkr() {
-        skip_if_ci!();
-        use field::baby_bear::base::BabyBearField;
-
-        let gkr_compiled = compile_unrolled_circuit_state_transition_into_gkr::<BabyBearField>(
-            &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
-            &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
-            common_constants::ROM_WORD_SIZE,
-            24,
-            0,
-        );
-
-        serialize_to_file(
-            &gkr_compiled,
-            "compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
-        );
-    }
-
-    #[test]
-    fn compile_add_sub_lui_auipc_mop_gkr_witness_graph() {
-        skip_if_ci!();
-        use field::baby_bear::base::BabyBearField;
-
-        let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
-            &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
-            &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
-        );
-        serialize_to_file(
-            &ssa_forms,
-            "compiled_circuits/add_sub_lui_auipc_mop_ssa_gkr.json",
-        );
-    }
 
     #[test]
     fn compile_add_sub_lui_auipc_mop_into_no_caches_gkr() {

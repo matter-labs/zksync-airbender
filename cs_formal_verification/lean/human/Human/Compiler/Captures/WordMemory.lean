@@ -9,7 +9,7 @@ public import Human.Circuits.WordMemory.Artifact
 
 namespace Airbender.Compiler.Captures.WordMemory
 
-import_circuit importedCircuit from "../../cs/compiled_circuits/mem_word_only_layout_gkr.json" shared imported
+import_circuit importedCircuit from "../../circuit_defs/unrolled_circuits/load_store_word_only/generated/layout.json" shared imported
 
 noncomputable def imported : NativeCapture := {
   cached := true, circuit := importedCircuit, family := "word-memory", format_version := 1 }

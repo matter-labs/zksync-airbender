@@ -10,7 +10,8 @@ import sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from generate_worker_selectors import native_chains, FAMILIES, WORKERS
+from check_compiler_captures import FAMILIES, cached_layout
+from generate_worker_selectors import native_chains, WORKERS
 
 VARIANTS = {'Bigint': 'bigint', 'BlakeG': 'blakeG', 'BlakeRound': 'blakeRound', 'KeccakColumnParity': 'columnParity',
             'KeccakThetaRho': 'thetaRho', 'KeccakChi5': 'chi5'}
@@ -120,7 +121,7 @@ def main():
     directory = ROOT / 'proven/Proven/Compiler/WorkerSelectors'
     stale = []
     for title, family in WORKERS.items():
-        circuit = json.loads((ROOT.parent.parent / f'cs/compiled_circuits/{FAMILIES[family]}_layout_gkr.json').read_text())
+        circuit = json.loads(cached_layout(FAMILIES[family]).read_text())
         entries, chains = native_chains(circuit)
         modules = family_modules(title, VARIANTS[title], entries, chains)
         for relative, text in modules.items():

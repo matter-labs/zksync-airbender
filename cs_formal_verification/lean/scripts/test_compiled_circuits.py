@@ -15,13 +15,13 @@ SAMPLE = {"trace_len": 4, "layers": [{"gates": [[268435454, {"Setup": 0}]]}], "_
 
 class CompiledCircuitTests(unittest.TestCase):
     def test_every_imported_circuit_has_one_generator(self):
-        names = [path.name for path in imported_paths()]
+        names = [path.relative_to(regeneration.REPOSITORY).as_posix() for path in imported_paths()]
         self.assertEqual(set(regeneration.GENERATORS), set(names))
-        self.assertLess(len(regeneration.generator_tests(names)), len(names))
+        self.assertEqual(len(regeneration.generator_tests(names)), len(names))
 
     def test_unmapped_circuit_fails(self):
         with self.assertRaisesRegex(ValueError, 'without a generator test'):
-            regeneration.generator_tests(['absent_layout_gkr.json'])
+            regeneration.generator_tests(['absent/generated/layout.json'])
 
     def test_serializer_whitespace_is_not_a_difference(self):
         committed = json.dumps(SAMPLE, indent=2).encode()

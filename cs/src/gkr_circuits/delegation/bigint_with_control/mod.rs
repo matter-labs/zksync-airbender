@@ -880,46 +880,8 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::gkr_compiler::compile_delegation_circuit_into_gkr;
     use crate::gkr_compiler::compile_delegation_circuit_into_gkr_without_caches;
-    use crate::gkr_compiler::dump_ssa_witness_eval_form;
     use crate::utils::serialize_to_file;
-
-    #[test]
-    fn compile_bigint_with_extended_control_into_gkr() {
-        skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
-
-        let gkr_compiled = compile_delegation_circuit_into_gkr::<BabyBearField>(
-            &|cs| bigint_with_extended_control_delegation_circuit_table_addition_fn(cs),
-            &|cs| {
-                let _ = define_bigint_with_extended_control_delegation_circuit(cs);
-            },
-            22,
-        );
-
-        serialize_to_file(
-            &gkr_compiled,
-            "compiled_circuits/bigint_with_extended_control_layout_gkr.json",
-        );
-    }
-
-    #[test]
-    fn compile_bigint_with_extended_control_witness_graph() {
-        skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
-
-        let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
-            &|cs| bigint_with_extended_control_delegation_circuit_table_addition_fn(cs),
-            &|cs| {
-                let _ = define_bigint_with_extended_control_delegation_circuit(cs);
-            },
-        );
-        serialize_to_file(
-            &ssa_forms,
-            "compiled_circuits/bigint_with_extended_control_ssa_gkr.json",
-        );
-    }
 
     #[test]
     fn compile_bigint_with_extended_control_into_no_caches_gkr() {

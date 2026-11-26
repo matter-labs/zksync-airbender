@@ -79,7 +79,7 @@ mod tests {
 
     fn lower_embedded_circuit(layout: &str, circuit_type: CircuitType) {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../cs/compiled_circuits")
+            .join("../..")
             .join(layout);
         let artifact: GKRCircuitArtifact<BF> =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
@@ -123,51 +123,51 @@ mod tests {
 
         let cases = [
             (
-                "add_sub_lui_auipc_mop_layout_gkr.json",
+                "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json",
                 CircuitType::Unrolled(NonMemory(AddSubLuiAuipcMop)),
             ),
             (
-                "jump_branch_slt_layout_gkr.json",
+                "circuit_defs/unrolled_circuits/jump_branch_slt/generated/layout.json",
                 CircuitType::Unrolled(NonMemory(JumpBranchSlt)),
             ),
             (
-                "unsigned_mul_div_layout_gkr.json",
+                "circuit_defs/unrolled_circuits/mul_div_unsigned/generated/layout.json",
                 CircuitType::Unrolled(NonMemory(MulDivUnsigned)),
             ),
             (
-                "shift_binop_layout_gkr.json",
+                "circuit_defs/unrolled_circuits/shift_binary/generated/layout.json",
                 CircuitType::Unrolled(NonMemory(ShiftBinary)),
             ),
             (
-                "mem_word_only_layout_gkr.json",
+                "circuit_defs/unrolled_circuits/load_store_word_only/generated/layout.json",
                 CircuitType::Unrolled(Memory(LoadStoreWordOnly)),
             ),
             (
-                "mem_subword_only_layout_gkr.json",
+                "circuit_defs/unrolled_circuits/load_store_subword_only/generated/layout.json",
                 CircuitType::Unrolled(Memory(LoadStoreSubwordOnly)),
             ),
             (
-                "inits_and_teardowns_layout_gkr.json",
+                "circuit_defs/unrolled_circuits/inits_and_teardowns/generated/layout.json",
                 CircuitType::Unrolled(InitsAndTeardowns),
             ),
             (
-                "unified_reduced_machine_layout_gkr.json",
+                "circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json",
                 CircuitType::Unrolled(Unified),
             ),
             (
-                "bigint_with_extended_control_layout_gkr.json",
+                "circuit_defs/bigint_with_control/generated/layout.json",
                 CircuitType::Delegation(BigIntWithControl),
             ),
             (
-                "keccak_special5_layout_gkr.json",
+                "circuit_defs/keccak_special5/generated/layout.json",
                 CircuitType::Delegation(KeccakSpecial5),
             ),
             (
-                "blake2_with_extended_control_layout_gkr.json",
+                "circuit_defs/blake2_with_compression/generated/layout.json",
                 CircuitType::Delegation(Blake2WithCompression),
             ),
             (
-                "blake2_g_function_layout_gkr.json",
+                "circuit_defs/blake2_g_function/generated/layout.json",
                 CircuitType::Delegation(Blake2GFunction),
             ),
         ];

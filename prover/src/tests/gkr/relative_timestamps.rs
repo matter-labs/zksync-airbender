@@ -40,7 +40,11 @@ type Tuple = (bool, u32, TimestampScalar, u32);
 type Tuples = BTreeSet<Tuple>;
 
 const LIMB: TimestampScalar = 1 << TIMESTAMP_COLUMNS_NUM_BITS;
-const VARIANTS: [&str; 2] = ["layout_gkr", "layout_no_caches_gkr"];
+#[derive(Clone, Copy, Debug)]
+enum LayoutVariant {
+    Cached,
+    NoCaches,
+}
 
 struct KeccakCircuit<D: DelegationAbiDescription, const IW: usize, const VO: usize> {
     stem: &'static str,
@@ -63,11 +67,15 @@ struct KeccakCircuit<D: DelegationAbiDescription, const IW: usize, const VO: usi
 }
 
 impl<D: DelegationAbiDescription, const IW: usize, const VO: usize> KeccakCircuit<D, IW, VO> {
-    fn artifact(&self, variant: &str) -> GKRCircuitArtifact<F> {
-        deserialize_from_file(&format!(
-            "../cs/compiled_circuits/{}_{variant}.json",
-            self.stem
-        ))
+    fn artifact(&self, variant: LayoutVariant) -> GKRCircuitArtifact<F> {
+        let stem = self.stem;
+        let path = match variant {
+            LayoutVariant::Cached => format!("../circuit_defs/{stem}/generated/layout.json"),
+            LayoutVariant::NoCaches => {
+                format!("../cs/compiled_circuits/{stem}_layout_no_caches_gkr.json")
+            }
+        };
+        deserialize_from_file(&path)
     }
 
     fn trace(&self, circuit: &GKRCircuitArtifact<F>, rows: &[Row<IW, VO>]) -> Trace {
@@ -97,7 +105,7 @@ impl<D: DelegationAbiDescription, const IW: usize, const VO: usize> KeccakCircui
     }
 
     fn tuples(&self, rows: &[Row<IW, VO>]) -> (Tuples, Tuples) {
-        let circuit = self.artifact(VARIANTS[0]);
+        let circuit = self.artifact(LayoutVariant::Cached);
         let oracle = DelegationOracle::<
             '_,
             D,
@@ -330,19 +338,22 @@ fn tampering_reaches_the_relations<
     circuit: &KeccakCircuit<D, IW, VO>,
 ) {
     let active = circuit.rows.len();
-    for variant in VARIANTS {
+    for variant in [LayoutVariant::Cached, LayoutVariant::NoCaches] {
         let artifact = circuit.artifact(variant);
         let constraints = lowered_constraints(&artifact);
         let groups = &artifact.aux_layout_data.relative_timestamp_groups;
         assert!(!groups.is_empty());
         let mut trace = circuit.trace(&artifact, &circuit.rows);
-        assert!(lowered_constraints_hold(&constraints, &trace), "{variant}");
+        assert!(
+            lowered_constraints_hold(&constraints, &trace),
+            "{variant:?}"
+        );
         for row in [0, active / 2, active - 1, active, artifact.trace_len - 1] {
             for group in groups.iter() {
                 let [low, high] = addresses(group);
                 let [l, h] = [low, high].map(|a| read_cell(&trace, a, row));
                 let b = borrow(&trace, &artifact, group, row);
-                let context = format!("{variant} row {row} group {:?}", group.members);
+                let context = format!("{variant:?} row {row} group {:?}", group.members);
                 assert!(
                     rejected_with(&constraints, &mut trace, row, &[(low, plus(l, 1))], low),
                     "{context}"
@@ -388,8 +399,11 @@ fn tampering_reaches_the_relations<
                 }
             }
         }
-        assert!(lowered_constraints_hold(&constraints, &trace), "{variant}");
-        assert!(check_satisfied(&artifact, &trace), "{variant}");
+        assert!(
+            lowered_constraints_hold(&constraints, &trace),
+            "{variant:?}"
+        );
+        assert!(check_satisfied(&artifact, &trace), "{variant:?}");
     }
 }
 
@@ -423,7 +437,7 @@ fn borrows_follow_the_limb_boundaries<
 >(
     circuit: &KeccakCircuit<D, IW, VO>,
 ) -> BTreeSet<TimestampScalar> {
-    let artifact = circuit.artifact(VARIANTS[0]);
+    let artifact = circuit.artifact(LayoutVariant::Cached);
     let top = LIMB - 1;
     let invocations: Vec<TimestampScalar> = [
         (0, 37),
@@ -484,7 +498,7 @@ fn disagreeing_members_are_refused<
 >(
     circuit: &KeccakCircuit<D, IW, VO>,
 ) {
-    let artifact = circuit.artifact(VARIANTS[0]);
+    let artifact = circuit.artifact(LayoutVariant::Cached);
     for group in artifact.aux_layout_data.relative_timestamp_groups.iter() {
         let mut rows = circuit.rows.clone();
         shift(&mut rows[5], &group.members[group.members.len() - 1..], 4);
@@ -696,7 +710,7 @@ fn interleaved_touch_is_rejected(
         };
         assert!(over_consumed(calls, &repointed, &words, &touched).is_empty());
     }
-    let artifact = chi5.artifact(VARIANTS[0]);
+    let artifact = chi5.artifact(LayoutVariant::Cached);
     let constraints = lowered_constraints(&artifact);
     let group = artifact
         .aux_layout_data
@@ -719,7 +733,7 @@ fn relations_hold<D: DelegationAbiDescription, const IW: usize, const VO: usize>
     circuit: &KeccakCircuit<D, IW, VO>,
     rows: &[Row<IW, VO>],
 ) -> Vec<bool> {
-    let artifact = circuit.artifact(VARIANTS[0]);
+    let artifact = circuit.artifact(LayoutVariant::Cached);
     let constraints = lowered_constraints(&artifact);
     let trace = circuit.trace(&artifact, rows);
     (0..rows.len())

@@ -2,7 +2,7 @@
 """Generate checked native-worker lookup bindings from the retained circuit inputs."""
 from pathlib import Path
 import json
-from check_compiler_captures import FAMILIES
+from check_compiler_captures import FAMILIES, cached_layout
 from generate_worker_selectors import selectors, WORKERS, address_key
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,8 +52,7 @@ def operand(row):
 
 def load(name):
     family = WORKERS[name]
-    circuit = json.loads((ROOT.parent.parent / "cs/compiled_circuits" /
-                          f"{FAMILIES[family]}_layout_gkr.json").read_text())
+    circuit = json.loads(cached_layout(FAMILIES[family]).read_text())
     native = selectors(circuit)
     placements = {address_key(a): int(i) for i, a in circuit["placement_data"].items()}
     positions = {int(i): position for position, i in enumerate(sorted(circuit["placement_data"], key=int))}

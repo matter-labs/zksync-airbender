@@ -83,7 +83,7 @@ fn cpu_partition_corpus_construction() {
     use crate::{compile_continuations, lower_main_continuation_window_program};
     use cs::gkr_compiler::GKRCircuitArtifact;
     use field::baby_bear::base::BabyBearField;
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut count = 0;
     for filename in super::super::corpus_tests::CORPUS {
         let artifact: GKRCircuitArtifact<BabyBearField> =
