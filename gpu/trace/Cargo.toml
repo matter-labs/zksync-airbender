@@ -30,7 +30,7 @@ field = { workspace = true }
 common_constants = { workspace = true }
 blake2s_u32 = { workspace = true }
 fft = { workspace = true }
-riscv_transpiler = { workspace = true, features = ["jit"] }
+riscv_transpiler = { workspace = true }
 
 [build-dependencies]
 gpu_native_build = { workspace = true }

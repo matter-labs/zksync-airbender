@@ -22,7 +22,7 @@ serde_json = "*"
 prover_pipeline = { workspace = true, default-features = false }
 worker = { path = "../../worker" }
 clap = { workspace = true }
-riscv_transpiler = { path = "../../riscv_transpiler" }
+riscv_transpiler = { workspace = true }
 field = { workspace = true }
 
 verifier_common = { workspace = true }

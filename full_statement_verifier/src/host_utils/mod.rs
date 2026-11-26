@@ -2,7 +2,7 @@ pub mod cost_model;
 pub mod fixture_artifact;
 pub mod fixture_codec;
 mod fsv;
-#[cfg(all(test, feature = "verifiers", target_arch = "x86_64"))]
+#[cfg(all(test, feature = "verifiers"))]
 mod recursion_guest_tests;
 #[cfg(test)]
 mod reduced_isa_gate;

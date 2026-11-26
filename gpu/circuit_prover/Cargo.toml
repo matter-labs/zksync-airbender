@@ -49,7 +49,7 @@ prover = { workspace = true, features = ["test", "deterministic_pow"] }
 circuit_common = { workspace = true }
 common_constants = { workspace = true }
 itertools = "0.14"
-riscv_transpiler = { workspace = true, features = ["jit"] }
+riscv_transpiler = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
 worker = { workspace = true }

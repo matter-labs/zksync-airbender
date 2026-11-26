@@ -1,7 +1,7 @@
 use crate::vm::*;
 use common_constants::*;
 use std::alloc::Allocator;
-#[cfg(all(target_arch = "x86_64", feature = "jit"))]
+#[cfg(all(target_arch = "x86_64", feature = "auto-jit"))]
 use std::mem::offset_of;
 use std::ptr::NonNull;
 
@@ -15,7 +15,7 @@ pub use self::delegations::*;
 #[cfg(target_pointer_width = "64")]
 pub use self::structs::*;
 
-#[cfg(all(target_arch = "x86_64", feature = "jit"))]
+#[cfg(all(target_arch = "x86_64", feature = "auto-jit"))]
 #[allow(
     clippy::useless_conversion,
     clippy::identity_op,
@@ -23,10 +23,10 @@ pub use self::structs::*;
 )] // dynasm! operand expansion
 mod impls;
 
-#[cfg(all(target_arch = "x86_64", feature = "jit"))]
+#[cfg(all(target_arch = "x86_64", feature = "auto-jit"))]
 pub use self::impls::*;
 
-#[cfg(all(target_arch = "x86_64", feature = "jit", test))]
+#[cfg(all(target_arch = "x86_64", feature = "auto-jit", test))]
 mod tests;
 
 // We will measure trace chunk in a number of memory accesses and not in a almost fixed number of cycles that did pass between them.
@@ -263,7 +263,7 @@ pub struct MachineState {
 // (32 x 33 x 33): rs1 in 0..32, rs2 in 0..33 (32 = load), rd in 0..33 (32 = store).
 pub const PACKED_TS_LEN: usize = 32 * 33 * 33;
 
-#[cfg(all(target_arch = "x86_64", feature = "jit"))]
+#[cfg(all(target_arch = "x86_64", feature = "auto-jit"))]
 impl MachineState {
     const SIZE: usize = core::mem::size_of::<Self>();
     const _T: () = const {

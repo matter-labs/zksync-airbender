@@ -24,8 +24,11 @@ sha3 = { workspace = true, optional = true }
 [dev-dependencies]
 prover = { workspace = true, features = ["test", "deterministic_pow"] }
 serde_json = "*"
-riscv_transpiler = { workspace = true, features = ["jit"] }
+riscv_transpiler = { workspace = true }
 object = { workspace = true }
+
+[target.'cfg(target_arch = "x86_64")'.dev-dependencies]
+riscv_transpiler = { workspace = true, features = ["jit"] }
 
 [features]
 # Opt-in static-input test and host-only compression wire policy.
