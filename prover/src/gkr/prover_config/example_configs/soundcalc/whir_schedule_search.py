@@ -8,9 +8,30 @@ the query cap, then the PoW is lowered to the smallest value that still reaches 
 Virtual packing (fold_log2 = 0) is emulated with log_degree + 1 and k_0 = 1 (soundcalc needs k >= 1):
 the batched polynomial of size 2^m is then re-committed as the first internal oracle at size 2^m,
 which is exactly the virtual-packing shape; the emulated base code is 2x larger than the real one,
-so the emulated base fold term is 1 bit conservative; the real batching term is recomputed directly."""
+so the artificial base fold is excluded and the real batching term is recomputed directly."""
+import argparse
+from contextlib import redirect_stdout
+import json
 import math
-from soundcalc.common.fields import BABYBEAR_4 as F, FieldParams
+from pathlib import Path
+import subprocess
+import sys
+
+if not __debug__:
+    sys.exit("Soundcalc certification requires Python assertions. Run without -O or PYTHONOPTIMIZE.")
+
+import soundcalc
+
+soundcalc_root = Path(soundcalc.__file__).resolve().parent.parent
+soundcalc_revision = "2af5e7dfc01e4aef1bc0e544a3b75c1940b1dded"
+head = subprocess.run(
+    ["git", "-C", str(soundcalc_root), "rev-parse", "--show-toplevel", "HEAD"],
+    capture_output=True, text=True,
+)
+if head.returncode or head.stdout.splitlines() != [str(soundcalc_root), soundcalc_revision]:
+    sys.exit(f"Soundcalc certification requires the imported checkout at 2af5e7d (found at {soundcalc_root}).")
+
+from soundcalc.common.fields import BABYBEAR_4, FieldParams
 from soundcalc.pcs.whir import WHIR, WHIRConfig
 from soundcalc.proxgaps.proxgaps_regime import ProximityGapsRegime
 from soundcalc.proxgaps.johnson_bound import JohnsonBoundRegime
@@ -19,6 +40,11 @@ from soundcalc.common.utils import get_bits_of_security_from_error as bits
 
 HASH_SIZE_BITS = 256
 TARGET = 100; LATER_POW = 27; FOLD_CAP = 24; MAX_DOM = 27
+
+def baby_bear_field(field_size):
+    return FieldParams(BABYBEAR_4.name, BABYBEAR_4.p, 4, field_size, BABYBEAR_4.two_adicity)
+
+F = baby_bear_field(2**128 / 81)
 
 class Mixed(ProximityGapsRegime):
     """per-iteration regime (WHIR Theorem 5.2 has per-iteration delta_i / ell_i); keyed by iteration rate"""
@@ -44,8 +70,40 @@ def build(log_degree, folds, queries, ldes, pows, fold_pows, ood_pows, n_cols, b
         num_ood_samples=[1]*(M-1), grinding_bits_ood=ood_pows)
     w = WHIR(cfg); rates = [base_lde_log2] + ldes; w.log_inv_rates = rates + [rates[-1]]; return w
 
-def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=False, today=None,
-          base_lde_log2=1, max_pow=LATER_POW, *, field=F, search_base_regimes=False):
+def certify_baby_bear(schedule, message_log2, columns, regimes, field=F):
+    base = schedule["base_round"]
+    internal = schedule["internal_rounds"]
+    rounds = [base, *internal]
+    virtual = base["fold_log2"] == 0
+    folds = [base["fold_log2"] or 1, *(r["folding_log2"] for r in internal)]
+    rates = [r["lde_factor_log2"] for r in rounds]
+    assert len(regimes) == len(set(rates)) == len(rounds)
+    assert all(r["num_queries"] > 0 for r in rounds)
+    assert all(r["num_ood_samples"] == 1 for r in internal)
+    by_rate = {
+        rate: (JohnsonBoundRegime(field, explicit_m=m) if m is not None
+               else UniqueDecodingRegime(field))
+        for rate, m in zip(rates, regimes)
+    }
+    batching_pow = base["batching_pow_bits"]
+    whir = build(
+        message_log2 + int(virtual), folds, [r["num_queries"] for r in rounds], rates[1:],
+        [r["queries_pow_bits"] for r in rounds],
+        [[r["folding_pow_bits"]] * fold for r, fold in zip(rounds, folds)],
+        [r["ood_pow_bits"] for r in internal], columns, batching_pow, rates[0], field=field,
+    )
+    levels = whir.get_pcs_security_levels(Mixed(field, by_rate))
+    if virtual:
+        del levels["fold(i=0,s=1)"]
+        error = by_rate[rates[0]].get_error_powers(2**-rates[0], 2**message_log2, columns)
+        levels["batching"] = bits(error) + batching_pow
+    assert levels and min(levels.values()) >= TARGET, levels
+    return levels
+
+
+def solve(label, msg_log2, folds, n_cols, base_pow, virtual=False,
+          base_lde_log2=1, max_pow=LATER_POW, *, field=F, search_base_regimes=False,
+          first_internal_lde_log2=None):
     assert base_pow <= max_pow
     assert msg_log2 + base_lde_log2 <= MAX_DOM
     log_degree = msg_log2 + (1 if virtual else 0)
@@ -69,7 +127,7 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
             fp.append(max(0, TARGET - bits(e)))
         if bpow > max_pow or max(fp) > FOLD_CAP: continue
         bpq = -math.log2(1 - reg.get_proximity_parameter(base_rate, 2 ** (log_degree - 1)))
-        t = base_queries if base_queries else math.ceil((TARGET - base_pow) / bpq)
+        t = math.ceil((TARGET - base_pow) / bpq)
         key = (t, bpow + max(fp))
         if best is None or key < best[0]: best = (key, lab, reg, bpow, fp, bpq, t)
     assert best, f'{label}: no base regime within the PoW caps'
@@ -81,6 +139,8 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
         cands = [("UDR", udr, L) for L in range(2, MAX_DOM - p + 1)] + [(f"JBR m={m}", jbr[m], L) for m in jbr for L in range(2, MAX_DOM - p + 1)]
         for lab, reg, L in cands:
             if L in regimes: continue
+            if i == 1 and first_internal_lde_log2 is not None and L != first_internal_lde_log2:
+                continue
             rate = 2.0 ** -L
             bpq = -math.log2(1 - reg.get_proximity_parameter(rate, 2 ** (p - 1)))
             t = math.ceil((TARGET - max_pow) / bpq)
@@ -121,42 +181,57 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
         assert qpow <= max_pow, (label, i, qpow)
         queries.append(t); ldes.append(L); regimes[L] = reg; pows.append(qpow); fold_pows.append(fp); ood_pows.append(op)
         rows.append((p, L, k, lab, bpq, t, fp, op, qpow, query_term))
-    w = build(log_degree, folds, queries, ldes, pows, fold_pows, ood_pows, n_cols, bpow, base_lde_log2, field=field)
-    lv = w.get_pcs_security_levels(Mixed(field, regimes)); kk = min(lv, key=lv.get)
-    real_batch = bits(base_reg.get_error_powers(base_rate, 2 ** msg_log2, n_cols)) + bpow
+    base = dict(lde_factor_log2=base_lde_log2, fold_log2=0 if virtual else folds[0],
+                num_queries=t0, queries_pow_bits=base_pow, folding_pow_bits=0 if virtual else max(base_fp),
+                batching_pow_bits=bpow)
+    internal = [
+        dict(lde_factor_log2=L, folding_log2=k, num_queries=t, queries_pow_bits=qpow,
+             folding_pow_bits=max(fp), num_ood_samples=1, ood_pow_bits=op)
+        for _, L, k, _, _, t, fp, op, qpow, _ in rows
+    ]
+    schedule = dict(base_round=base, internal_rounds=internal)
+    multiplicities = {reg: m for m, reg in jbr.items()}
+    ms = [multiplicities.get(reg) for reg in regimes.values()]
+    lv = certify_baby_bear(schedule, msg_log2, n_cols, ms, field)
+    kk = min(lv, key=lv.get)
     print(f"\n### {label}")
-    print(f"target 100; batched-polynomial ceiling {n_cols} -> batching PoW {bpow} bits (batching term {real_batch} bits, {base_lab}, base code 2^{msg_log2} at rate 1/{2 ** base_lde_log2})")
-    print(f"soundcalc mixed total: {lv[kk]} bits (binding term {kk}){'  <-- base round kept as today: the base query term binds' if base_queries else ''}")
+    print(f"target 100; batched-polynomial ceiling {n_cols} -> batching PoW {bpow} bits (batching term {lv['batching']} bits, {base_lab}, base code 2^{msg_log2} at rate 1/{2 ** base_lde_log2})")
+    print(f"soundcalc minimum: {lv[kk]} bits (binding term {kk})")
     bk = 'fold_log2 0 (virtual packing)' if virtual else f'fold_log2 {folds[0]}'
     delta = base_reg.get_proximity_parameter(base_rate, 2 ** (log_degree - 1))
     ell = base_reg.get_max_list_size(base_rate, 2 ** log_degree)
-    reason = "; JBR not certifiable here (batching term 73-90 bits for any m within the PoW budget) and its delta at rate 1/2 is below UDR's" if base_lde_log2 == 1 and base_reg is udr else f'; per sumcheck round {base_fp}'
-    print(f"base_round: lde_factor_log2 {base_lde_log2}, {bk}, num_queries {t0}, queries_pow_bits {base_pow}, folding_pow_bits {max(base_fp)}, batching_pow_bits {bpow}  | regime {base_lab} (delta {delta:g}, {bpq0:.3f} bits/query, ell {ell:g}) -> base query term {base_bits} bits{reason}")
+    print(f"base_round: lde_factor_log2 {base_lde_log2}, {bk}, num_queries {t0}, queries_pow_bits {base_pow}, folding_pow_bits {base['folding_pow_bits']}, batching_pow_bits {bpow}  | regime {base_lab} (delta {delta:g}, {bpq0:.3f} bits/query, ell {ell:g}) -> base query term {base_bits} bits")
+    analysis = []
     for j, (p, L, k, lab, bpq, t, fp, op, qpow, query_term) in enumerate(rows):
         needU = math.ceil((TARGET - max_pow) / -math.log2(1 - udr.get_proximity_parameter(2.0**-L, 2**(p-1))))
         print(f"internal_round {j}: poly 2^{p}, lde_factor_log2 {L} (domain 2^{p+L}), folding_log2 {k}, num_queries {t}, queries_pow_bits {qpow} (query term {query_term} bits ungrinded), folding_pow_bits {max(fp)} (per sumcheck round {fp}), num_ood_samples 1, ood_pow_bits {op}  | regime {lab}, {bpq:.2f} bits/query; UDR here would need {needU} queries")
-    if today: print(f"today: {today}")
-    return lv
+        analysis.append(dict(bits_per_query=bpq, unique_decoding_queries=needU,
+                             folding_pow_bits_per_step=fp))
+    return dict(message_log2=msg_log2, columns=n_cols, schedule=schedule, multiplicities=ms,
+                analysis=analysis, binding_term=kk, levels=lv)
+
+
+def standard_schedules():
+    return [
+        solve("2^23, ceiling 128", 23, [1, 5, 5, 5, 4], 128, 26,
+              max_pow=26, first_internal_lde_log2=3),
+        solve("2^24, ceiling 128", 24, [1, 5, 5, 5, 4, 3], 128, 26,
+              max_pow=26, first_internal_lde_log2=2),
+        solve("2^22, virtual packing, ceiling 512", 22, [0, 6, 5, 5, 5], 512, 26,
+              max_pow=26, first_internal_lde_log2=3, virtual=True),
+        solve("2^20, ceiling 1024", 20, [1, 5, 5, 4, 4], 1024, 27),
+        solve("2^20, virtual packing, ceiling 1024", 20, [0, 6, 5, 4, 4], 1024, 27, virtual=True),
+    ]
 
 
 if __name__ == "__main__":
-    # The entries of `example_configs/ethproofs_soundcalc.rs`, keyed by (message size, virtual packing).
-    # The committed-polynomial ceiling is the entry's `max_committed_polys`; it only sets the batching PoW.
-    solve("2^23, fold_log2 1, ceiling 128 (unified_reduced_machine 106 columns, mul_div_unsigned 59)", 23, [1,5,5,5,4], 128, 27,
-          today="folds [1,5,5,5,4], lde_log2 [4,9,14,19], queries [89,23,10,7,5], qPoW [26,24,25,19,21]")
-    solve("2^24, fold_log2 1, ceiling 128 (add_sub, inits_and_teardowns, jump_branch, load_store x2, shift_binary: <= 68 columns)", 24, [1,5,5,5,4,3], 128, 27,
-          today="folds [1,5,5,5,4,3], lde_log2 [4,9,14,19,19], queries [89,23,10,7,5,5], qPoW [26,24,25,19,21,21]")
-    solve("2^22, virtual packing, ceiling 512 (bigint 260, keccak_* <= 274, blake2_g_function 121 columns; blake2_with_compression 769/4 = 194 packed)", 22, [0,6,5,5,5], 512, 27, virtual=True,
-          today="virtual twin folds [0,6,5,5,5], lde_log2 [5,11,15,19], queries [89,15,8,6,5], qPoW [26,25,27,25,21]")
-    solve("2^20, fold_log2 1, ceiling 1024 (blake2_with_extended_control test circuit, 769 columns)", 20, [1,5,5,4,4], 1024, 27,
-          today="folds [1,5,5,4,4], lde_log2 [8,13,15,19], queries [89,11,7,6,5], qPoW [26,27,25,25,21]")
-    solve("2^20, virtual packing, ceiling 1024 (blake2_with_extended_control test circuit)", 20, [0,6,5,4,4], 1024, 27, virtual=True,
-          today="virtual twin folds [0,6,5,4,4], lde_log2 [7,13,15,19], queries [89,13,7,6,5], qPoW [26,27,25,25,21]")
-    solve("2^23, fold_log2 1, base round kept at 89 queries / PoW 26 (what today's base round certifies)", 23, [1,5,5,5,4], 128, 26, base_queries=89)
-    # Each reduced u32 has at most three preimages. The four-word challenge
-    # therefore has maximum point mass 81 / 2^128.
-    compression_field = FieldParams(F.name, F.p, F.field_extension_degree, 2**128 / 81, F.two_adicity)
-    levels = solve("2^23, fold_log2 1, base LDE 2^3, ceiling 128, compression",
-                   23, [1,5,5,5,4], 128, 25, base_lde_log2=3, max_pow=25,
-                   field=compression_field, search_base_regimes=True)
-    assert min(levels.values()) >= TARGET, levels
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json", action="store_true", help="emit the schedules and certificates as JSON")
+    args = parser.parse_args()
+    with redirect_stdout(sys.stderr if args.json else sys.stdout):
+        schedules = standard_schedules()
+        schedules.append(solve("2^23, base LDE 2^3, ceiling 128, compression",
+                               23, [1, 5, 5, 5, 4], 128, 25, base_lde_log2=3, max_pow=25,
+                               search_base_regimes=True))
+    if args.json:
+        print(json.dumps(schedules, indent=2))

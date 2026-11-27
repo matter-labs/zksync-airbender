@@ -1,5 +1,6 @@
 use super::*;
 use prover::gkr::prover::transcript_utils::draw_random_field_els_with_pow;
+use prover::transcript::Transcript;
 #[path = "../../tests/stagewise_replay.rs"]
 mod replay;
 
@@ -30,7 +31,7 @@ fn replay_expected_snapshots(
     let lookup_pow_bits = fixture
         .base
         .prover_config
-        .lookup_challenges_pow_bits::<BF, E4>(compiled_circuit);
+        .lookup_challenges_pow_bits::<_, _, Blake2sTranscript>(compiled_circuit);
     let (lookup_nonce, _) = draw_random_field_els_with_pow::<BF, E4, Blake2sTranscript>(
         &mut seed,
         2,

@@ -142,7 +142,8 @@ pub(super) fn compression_artifact(target: ProofTarget, n: usize) -> ProofArtifa
 fn ethproofs_compression_gkr_security_margins() {
     use full_statement_verifier::unified_circuit_statement::ETHPROOFS_COMPRESSION_MAX_INSTANCES;
     use prover::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
-    use prover::gkr::prover_config::{example_configs, pow_bits};
+    use prover::gkr::prover_config::{pow_bits, BaseSoundness, ProximityRegime};
+    use prover::transcript::{Blake2sTranscript, Transcript};
 
     let mode = SoundnessMode::EthproofsSoundnessCalc;
     let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
@@ -151,28 +152,34 @@ fn ethproofs_compression_gkr_security_margins() {
     ));
     let family = CompressionProfile::Step.circuit().get_family_idx() as u32;
     let circuit = &artifact.proof.compiled_riscv_circuits[&family];
-    let entry = &example_configs::ethproofs_soundcalc::COMPRESSION_2_23;
-    let example_configs::ProximityRegime::JohnsonBound { m } = entry.base_analysis.regime else {
+    let config = CompressionProfile::Step.config(mode);
+    let BaseSoundness::Ethproofs(ProximityRegime::JohnsonBound { m }) = config.base_soundness
+    else {
         panic!("Ethproofs Compression uses a Johnson base");
     };
     let loss =
-        ((f64::from(m) + 0.5) * 2.0_f64.powf(entry.base_lde_factor_log2 as f64 / 2.0)).log2();
-    let challenge_bits = 128.0 - 81.0_f64.log2();
+        ((f64::from(m) + 0.5) * 2.0_f64.powf(config.base_lde_factor_log2() as f64 / 2.0)).log2();
+    let sampler =
+        <Blake2sTranscript as Transcript<BabyBearField, BabyBearExt4>>::CHALLENGE_POINT_MASS;
+    let challenge_bits = f64::from(sampler.random_bits) - f64::from(sampler.max_preimages).log2();
     assert_eq!(m, 3);
 
-    let config = CompressionProfile::Step.config(mode);
     assert_eq!(circuit.trace_len, 1 << config.trace_len_log2);
-    assert_eq!(
-        config.lookup_challenges_pow_bits::<BabyBearField, BabyBearExt4>(circuit),
-        14
-    );
-    let lookup_bits =
-        challenge_bits + 14.0 - (pow_bits::lookup_identity_degree(circuit) as f64).log2() - loss;
+    let pow = config.lookup_challenges_pow_bits::<_, _, Blake2sTranscript>(circuit);
+    assert_eq!(pow, 14);
+    let lookup_bits = challenge_bits + f64::from(pow)
+        - (pow_bits::lookup_identity_degree(circuit) as f64).log2()
+        - loss;
     assert!(lookup_bits >= 100.0, "lookup: {lookup_bits:.9} bits");
     let pessimistic = CompressionProfile::Step.config(SoundnessMode::PessimisticConjecture);
-    assert_eq!(
-        pessimistic.lookup_challenges_pow_bits::<BabyBearField, BabyBearExt4>(circuit),
-        9
+    let pessimistic_pow =
+        pessimistic.lookup_challenges_pow_bits::<_, _, Blake2sTranscript>(circuit);
+    assert_eq!(pessimistic_pow, 11);
+    let pessimistic_lookup_bits = challenge_bits + f64::from(pessimistic_pow)
+        - (pow_bits::lookup_identity_degree(circuit) as f64).log2();
+    assert!(
+        pessimistic_lookup_bits >= 100.0,
+        "lookup: {pessimistic_lookup_bits:.9} bits"
     );
 
     let memory_pow_bits = verifier_common::MEMORY_DELEGATION_POW_BITS;

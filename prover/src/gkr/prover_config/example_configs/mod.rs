@@ -262,7 +262,20 @@ pub fn prover_config(
         ),
         None => WhirInput::without_column_count(trace_len_log2, packing),
     };
-    standard_config(trace_len_log2, level, whir_schedule(mode, level, &input))
+    let (base_soundness, schedule) = match mode {
+        SoundnessMode::PessimisticConjecture => (
+            BaseSoundness::PessimisticConjecture,
+            whir_schedule(mode, level, &input),
+        ),
+        SoundnessMode::EthproofsSoundnessCalc => {
+            let entry = ethproofs_soundcalc::entry(level, &input);
+            (
+                BaseSoundness::Ethproofs(entry.base_analysis.regime),
+                entry.schedule(input.physical_packing_log2),
+            )
+        }
+    };
+    standard_config(trace_len_log2, level, base_soundness, schedule)
 }
 
 /// The standard config shape around a WHIR schedule: separate memory and
@@ -271,6 +284,7 @@ pub fn prover_config(
 pub fn standard_config(
     trace_len_log2: usize,
     level: SecurityLevel,
+    base_soundness: BaseSoundness,
     whir_schedule: WhirSchedule,
 ) -> ProverConfig {
     let config = ProverConfig {
@@ -281,7 +295,7 @@ pub fn standard_config(
         cap_size: whir_schedule.cap_size,
         sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
         security_level: level,
-        lookup_challenges_pow_floor: None,
+        base_soundness,
         whir_schedule,
     };
     config.validate_for_whir_message_size(config.whir_message_size_log2());

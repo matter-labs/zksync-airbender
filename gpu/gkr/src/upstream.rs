@@ -57,6 +57,7 @@ pub(crate) use prover::gkr::whir::{
     WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,
 };
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
+pub(crate) use prover::transcript::Keccak256Transcript;
 #[cfg(test)]
 pub(crate) use prover::transcript::Seed;
 

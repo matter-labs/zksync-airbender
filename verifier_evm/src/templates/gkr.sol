@@ -351,8 +351,8 @@ contract GkrWhirVerifierCode {
         // Multiplying out gives the inverse-free equality the EVM verifier enforces instead:
         //   read_poly * teardown_poly * read_bnd  ==  write_poly * init_poly * write_bnd
         // where read_bnd/write_bnd are the register + PC boundary contributions built from the
-        // register final state and PC in the transcript preimage (validated in the Rust mirror
-        // verify_permutation_identity_no_inversion). Challenge/addr-space/index constants:
+        // register final state and PC in the transcript preimage.
+        // Challenge/addr-space/index constants:
         //   perm-lin challenges mc[0..5]: ADDR_LOW=0, ADDR_HIGH=1, TS_LOW=2, TS_HIGH=3,
         //   VALUE_LOW=4, VALUE_HIGH=5; additive = mc@192. PC modeled as memory cell:
         //   PC_LOW=VALUE_LOW=4, PC_HIGH=VALUE_HIGH=5, PC_TS_LOW=2, PC_TS_HIGH=3.

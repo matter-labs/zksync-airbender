@@ -1,4 +1,4 @@
-use crate::Transcript;
+use crate::{ChallengePointMass, Transcript};
 use field::proth120::Proth120;
 use sha3::{Digest, Keccak256};
 
@@ -107,6 +107,12 @@ fn top_bits_are_zero(digest: &[u8; 32], pow_bits: u32) -> bool {
 impl Transcript<Proth120, Proth120> for Keccak256Transcript {
     type Seed = Keccak256Seed;
     type Hasher = Keccak256Hasher;
+
+    const CHALLENGE_POINT_MASS: ChallengePointMass = ChallengePointMass {
+        random_bits: u128::BITS,
+        max_preimages: (u128::MAX / Proth120::ORDER + 1) as u32,
+        max_pow_bits: u64::BITS,
+    };
 
     fn commit_initial_u32(input: &[u32]) -> Self::Seed {
         // No prior seed: keccak256 over the little-endian input bytes.

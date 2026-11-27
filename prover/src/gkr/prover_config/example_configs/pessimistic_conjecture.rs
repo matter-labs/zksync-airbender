@@ -140,6 +140,7 @@ pub fn config_for_security_level_under_pessimistic_conjecture(
     standard_config(
         trace_len_log2,
         level,
+        BaseSoundness::PessimisticConjecture,
         whir_schedule(level, trace_len_log2, BasePacking::NONE),
     )
 }
@@ -166,6 +167,7 @@ pub fn packed_config_for_security_level_under_pessimistic_conjecture(
     standard_config(
         trace_len_log2,
         level,
+        BaseSoundness::PessimisticConjecture,
         whir_schedule(level, packing.message_size_log2(trace_len_log2), packing),
     )
 }
@@ -199,6 +201,7 @@ pub fn virtual_packed_config_for_security_level_under_pessimistic_conjecture(
     standard_config(
         trace_len_log2,
         level,
+        BaseSoundness::PessimisticConjecture,
         whir_schedule(level, packing.message_size_log2(trace_len_log2), packing),
     )
 }

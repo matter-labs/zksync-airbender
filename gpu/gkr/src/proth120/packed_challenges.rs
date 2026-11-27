@@ -10,7 +10,8 @@ use gpu_hash::keccak256::{
 use gpu_prover_context::ProverContext;
 
 use crate::upstream::{
-    split_timestamp, GKRCircuitArtifact, GKRExternalChallenges, OperationMode, ProverConfig,
+    split_timestamp, GKRCircuitArtifact, GKRExternalChallenges, Keccak256Transcript, OperationMode,
+    ProverConfig,
 };
 
 pub const BOUNDARY_PREFIX_U32_LEN: usize = 32 * 3 + 3;
@@ -59,7 +60,7 @@ pub fn lookup_pow_bits(
     external_challenges_pow_bits: u32,
 ) -> u32 {
     config
-        .lookup_challenges_pow_bits::<PR, PR>(circuit)
+        .lookup_challenges_pow_bits::<_, _, Keccak256Transcript>(circuit)
         .max(external_challenges_pow_bits)
 }
 

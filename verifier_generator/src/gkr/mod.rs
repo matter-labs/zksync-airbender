@@ -2152,7 +2152,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             ),
         );
     let lookup_challenges_pow_bits = prover_config
-        .lookup_challenges_pow_bits::<MW::BaseField, MW::ChallengeField>(compiled_circuit);
+        .lookup_challenges_pow_bits::<_, MW::ChallengeField, MW::Transcript>(compiled_circuit);
     let whir_cap_size = whir_schedule.cap_size;
     let whir_cap_size_log2 = whir_cap_size.trailing_zeros() as usize;
 

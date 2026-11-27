@@ -1,13 +1,15 @@
 use std::collections::BTreeMap;
 
 use crate::definitions::SecurityLevel;
+use field::{FieldExtension, PrimeField};
+use transcript::Transcript;
 
 pub mod commitment_geometry;
 pub mod example_configs;
 pub mod pow_bits;
 pub mod whir_schedule;
 
-pub use example_configs::{BaseColumns, BasePacking, SoundnessMode, WhirInput};
+pub use example_configs::{BaseColumns, BasePacking, ProximityRegime, SoundnessMode, WhirInput};
 pub use whir_schedule::{WhirBaseRoundSchedule, WhirInternalRound, WhirSchedule};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -70,10 +72,6 @@ impl ProofProfile {
                 assert_eq!(
                     trace_len_log2, config.trace_len_log2,
                     "L1Wrap trace length for {mode:?}"
-                );
-                assert!(
-                    config.lookup_challenges_pow_floor.is_none(),
-                    "L1 wrap does not support a lookup PoW floor"
                 );
                 config
             }
@@ -314,6 +312,12 @@ pub enum CommitmentMode {
     MergedMemoryAndWitness,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum BaseSoundness {
+    PessimisticConjecture,
+    Ethproofs(ProximityRegime),
+}
+
 /// The pre-refactor top-level `lde_factor`, `base_oracles_values_per_leaf` and `pack_log2` are
 /// rejected as unknown fields: the schedule is their only source.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -331,8 +335,7 @@ pub struct ProverConfig {
     // error is very small
     pub sumcheck_explicit_output_size_log_2: usize,
     pub security_level: SecurityLevel,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub lookup_challenges_pow_floor: Option<u32>,
+    pub base_soundness: BaseSoundness,
     /// The whole WHIR geometry: the base round ([`WhirBaseRoundSchedule`]:
     /// the base oracles' LDE factor, physical packing, round-0 fold — `0` is
     /// virtual packing with one value per column per leaf — and base query
@@ -357,15 +360,24 @@ pub struct ProverConfig {
 }
 
 impl ProverConfig {
-    pub fn lookup_challenges_pow_bits<F: field::PrimeField, E: field::FieldExtension<F>>(
+    pub fn lookup_challenges_pow_bits<F: PrimeField, E: FieldExtension<F>, TR: Transcript<F, E>>(
         &self,
         circuit: &cs::gkr_compiler::GKRCircuitArtifact<F>,
     ) -> u32 {
-        pow_bits::lookup_challenges_pow_bits::<F, E>(
-            self.security_level.security_bits(),
+        assert!(
+            !matches!(
+                self.base_soundness,
+                BaseSoundness::Ethproofs(ProximityRegime::JohnsonBound { .. })
+            ) || self.merged_memory_and_witness(),
+            "lookup PoW with a Johnson base requires a merged memory and witness commitment",
+        );
+        pow_bits::lookup_challenges_pow_bits(
+            self.security_level.security_bits() as u32,
             pow_bits::lookup_identity_degree(circuit),
+            self.base_soundness,
+            self.base_lde_factor_log2(),
+            TR::CHALLENGE_POINT_MASS,
         )
-        .max(self.lookup_challenges_pow_floor.unwrap_or(0))
     }
 
     /// A bare config for WHIR-only drivers and tests: a
@@ -384,7 +396,7 @@ impl ProverConfig {
             sumcheck_explicit_output_size_log_2:
                 crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
             security_level,
-            lookup_challenges_pow_floor: None,
+            base_soundness: BaseSoundness::PessimisticConjecture,
             whir_schedule,
             same_size_sumcheck_schedule: naive_same_size_schedule(),
             dimension_reducing_sumcheck_schedule: Default::default(),
@@ -646,6 +658,36 @@ mod test {
                 ood_pow_bits: 0,
             });
         config.validate_for_whir_message_size(23);
+    }
+
+    #[test]
+    fn config_json_requires_base_soundness() {
+        let configs = [
+            example_configs::config_for_100_bits_under_pessimistic_conjecture(23),
+            example_configs::prover_config(
+                SoundnessMode::EthproofsSoundnessCalc,
+                SecurityLevel::Sec100,
+                23,
+                BasePacking::NONE,
+                Some(&BaseColumns {
+                    memory: 38,
+                    witness: 58,
+                    setup: 10,
+                }),
+            ),
+            example_configs::ethproofs_compression_config_for_2_23(),
+        ];
+        for config in configs {
+            let mut json = serde_json::to_value(&config).unwrap();
+            assert_eq!(
+                serde_json::from_value::<ProverConfig>(json.clone()).unwrap(),
+                config
+            );
+            let fields = json.as_object_mut().unwrap();
+            assert!(fields.remove("base_soundness").is_some());
+            let error = serde_json::from_value::<ProverConfig>(json).unwrap_err();
+            assert!(error.to_string().contains("missing field `base_soundness`"));
+        }
     }
 
     #[test]

@@ -569,16 +569,16 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
     }
 }
 const FINAL_FOLD_STEPS: usize = 3usize;
-const FINAL_NUM_QUERIES: usize = 11usize;
+const FINAL_NUM_QUERIES: usize = 12usize;
 const FINAL_VALUES_PER_LEAF: usize = 8usize;
 const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
-const FINAL_QUERY_INDEX_BITS: usize = 15usize;
-const FINAL_RS_DOMAIN_LOG2: usize = 18usize;
-const FINAL_NUM_COSETS: usize = 16384usize;
-const FINAL_NUM_COSETS_LOG2: usize = 14usize;
+const FINAL_QUERY_INDEX_BITS: usize = 14usize;
+const FINAL_RS_DOMAIN_LOG2: usize = 17usize;
+const FINAL_NUM_COSETS: usize = 8192usize;
+const FINAL_NUM_COSETS_LOG2: usize = 13usize;
 const FINAL_COSET_TREE_SIZE: usize = 2usize;
 const FINAL_DRAW_WORDS: usize = 8usize;
-const FINAL_POW_BITS: u32 = 26u32;
+const FINAL_POW_BITS: u32 = 25u32;
 const FINAL_FOLDING_POW_BITS: u32 = 23u32;
 const FINAL_ORACLE_DEPTH_IDX: usize = 4usize;
 const FINAL_ORACLE_DEPTH: usize = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];

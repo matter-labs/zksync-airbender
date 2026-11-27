@@ -1,10 +1,12 @@
 use proc_macro2::TokenStream;
 use prover::field::{FieldExtension, PrimeField};
+use prover::transcript::{Blake2sTranscript, Transcript};
 use quote::quote;
 
 pub trait FieldWrapper {
     type BaseField: PrimeField;
     type ChallengeField: FieldExtension<Self::BaseField>;
+    type Transcript: Transcript<Self::BaseField, Self::ChallengeField>;
 
     fn coeff_to_internal_repr(coeff: u32) -> u32 {
         Self::BaseField::from_u32_with_reduction(coeff).as_u32_raw_repr_reduced()
@@ -79,6 +81,7 @@ pub struct DefaultBabyBearField;
 impl FieldWrapper for DefaultBabyBearField {
     type BaseField = prover::field::baby_bear::base::BabyBearField;
     type ChallengeField = prover::field::baby_bear::ext4::BabyBearExt4;
+    type Transcript = Blake2sTranscript;
 
     fn field_struct() -> TokenStream {
         quote! { BabyBearField }

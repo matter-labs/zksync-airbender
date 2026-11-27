@@ -1,4 +1,4 @@
-use crate::Transcript;
+use crate::{ChallengePointMass, Transcript};
 use blake2s_u32::*;
 use core::mem::MaybeUninit;
 use field::baby_bear::base::BabyBearField;
@@ -763,6 +763,13 @@ impl<const REDUCED_ROUNDS: bool> Transcript<BabyBearField, BabyBearExt4>
 {
     type Seed = Seed;
     type Hasher = DelegatedBlake2sState;
+
+    const CHALLENGE_POINT_MASS: ChallengePointMass = ChallengePointMass {
+        random_bits: u32::BITS * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE as u32,
+        max_preimages: (u32::MAX / BabyBearField::ORDER + 1)
+            .pow(<BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE as u32),
+        max_pow_bits: u32::BITS,
+    };
 
     #[inline(always)]
     fn commit_initial_u32(input: &[u32]) -> Self::Seed {
