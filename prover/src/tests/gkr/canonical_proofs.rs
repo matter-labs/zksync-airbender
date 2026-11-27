@@ -341,26 +341,3 @@ fn regenerate_canonical_circuit_proofs(mode: SoundnessMode) {
     .collect();
     assert_eq!(expected, produced);
 }
-
-fn pilot(circuit: CanonicalCircuit) {
-    let worker = Worker::new();
-    let prepared = prepare(circuit, SoundnessMode::DEFAULT, &worker);
-    let proof = prove(prepared, &hardcoded_external_challenges(), &worker);
-    println!(
-        "pilot {}: {} proof bytes; no fixture write",
-        circuit.stem(),
-        serde_json::to_vec_pretty(&proof).unwrap().len()
-    );
-}
-
-#[test]
-#[ignore = "CPU proof cost pilot; no committed fixture writes"]
-fn canonical_proof_pilot_add_sub() {
-    pilot(CanonicalCircuit::AddSubLuiAuipcMop);
-}
-
-#[test]
-#[ignore = "CPU proof cost pilot; no committed fixture writes"]
-fn canonical_proof_pilot_bigint() {
-    pilot(CanonicalCircuit::BigintWithExtendedControl);
-}

@@ -1,11 +1,9 @@
-#![allow(internal_features)]
 #![feature(vec_push_within_capacity)]
 #![feature(allocator_api)]
 #![feature(likely_unlikely)]
 #![feature(pointer_is_aligned_to)]
 #![feature(const_cmp)]
 #![feature(const_trait_impl)]
-#![feature(core_intrinsics)]
 #![feature(slice_ptr_get)]
 #![deny(improper_ctypes)]
 
@@ -14,8 +12,6 @@
 // that just dispatches a function pointer
 
 pub mod abstractions;
-pub mod analysis;
-pub mod control_flow_artifact;
 pub mod cycle;
 pub mod elf;
 pub mod ir;

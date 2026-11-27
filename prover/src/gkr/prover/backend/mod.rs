@@ -93,52 +93,6 @@ pub trait ExtCoeffConversion<F: PrimeField + TwoAdicField, E: FieldExtension<F> 
             self.convert_leaf(column, offset_inv, first_leaf + w, chunk);
         }
     }
-    /// Convert ONE already gathered leaf in place: `leaf` holds the
-    /// evaluations in the tree's leaf order, `leaf_index` is its index in
-    /// the coset and `offset_inv` the inverse of the coset's LDE offset.
-    /// Bit-identical to [`Self::convert_leaf`] on the column the leaf was
-    /// gathered from (the by-coefficient oracle gathers leaves itself).
-    fn convert_gathered_leaf(&self, offset_inv: F, leaf_index: usize, leaf: &mut [E]);
-    /// Leaves `first_leaf .. first_leaf + count` (leaf-major in `leaves`,
-    /// already gathered) converted in place; vector implementations batch
-    /// pairs of leaves here.
-    fn convert_gathered_leaves(
-        &self,
-        offset_inv: F,
-        first_leaf: usize,
-        count: usize,
-        leaves: &mut [E],
-    ) {
-        let vpl = self.values_per_leaf();
-        for (w, chunk) in leaves[..count * vpl].chunks_exact_mut(vpl).enumerate() {
-            self.convert_gathered_leaf(offset_inv, first_leaf + w, chunk);
-        }
-    }
-    /// Leaves `first_leaf .. first_leaf + count` gathered SLOT-MAJOR
-    /// (`block[k * count + w]` = slot `k` of leaf `w`) converted in place —
-    /// the layout a vector gather of consecutive leaves produces and the
-    /// two-leaves-per-vector kernels consume without any re-interleaving.
-    fn convert_gathered_block(
-        &self,
-        offset_inv: F,
-        first_leaf: usize,
-        count: usize,
-        block: &mut [E],
-    ) {
-        let vpl = self.values_per_leaf();
-        let mut leaves = vec![E::ZERO; count * vpl];
-        for w in 0..count {
-            for k in 0..vpl {
-                leaves[w * vpl + k] = block[k * count + w];
-            }
-        }
-        self.convert_gathered_leaves(offset_inv, first_leaf, count, &mut leaves);
-        for w in 0..count {
-            for k in 0..vpl {
-                block[k * count + w] = leaves[w * vpl + k];
-            }
-        }
-    }
 }
 
 /// A shared leaf conversion of one oracle (the in-memory oracles keep their
@@ -256,17 +210,6 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> ExtCoeffConvers
             *o = column[off + leaf_index];
         }
     }
-    #[inline(always)]
-    fn convert_gathered_leaf(&self, _offset_inv: F, _leaf_index: usize, _leaf: &mut [E]) {}
-    #[inline(always)]
-    fn convert_gathered_block(
-        &self,
-        _offset_inv: F,
-        _first_leaf: usize,
-        _count: usize,
-        _block: &mut [E],
-    ) {
-    }
 }
 
 /// The standard conversion used by every current backend: the scalar
@@ -299,10 +242,6 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> ExtCoeffConvers
     #[inline(always)]
     fn convert_leaf(&self, column: &[E], offset_inv: F, leaf_index: usize, out: &mut [E]) {
         self.ctx.convert_leaf(column, offset_inv, leaf_index, out);
-    }
-    #[inline(always)]
-    fn convert_gathered_leaf(&self, offset_inv: F, leaf_index: usize, leaf: &mut [E]) {
-        self.ctx.convert_gathered_leaf(offset_inv, leaf_index, leaf);
     }
 }
 
@@ -496,17 +435,6 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
     /// [`ExtCoeffConversion`].
     type ExtCoeffConv: ExtCoeffConversion<F, E> + 'static;
     fn ext_coeff_conv(&self, coset_len: usize, values_per_leaf: usize) -> Self::ExtCoeffConv;
-
-    /// `Some(n)` when this backend's base-column LDE has a fast path at ONE
-    /// column length `n` (the strided 2^24 pipeline): the WHIR prover then
-    /// commits an intermediate oracle of `n / 2` values BY COEFFICIENT — its
-    /// `E::DEGREE` base-field limb columns, duplicated to length `n` (the
-    /// same codeword), through [`Self::lde_multiple_polys_from_hypercubes`]
-    /// at half the LDE factor — instead of through the extension-field coset
-    /// LDE (see [`crate::gkr::whir::by_coefficient`]). `None`: no such path.
-    fn by_coefficient_lde_len(&self) -> Option<usize> {
-        None
-    }
 
     /// Leaf accessor of one evaluation-form coset column (the committed,
     /// converted leaves), built over the oracle-wide conversion context
@@ -1537,10 +1465,14 @@ mod tests {
         let backend = BabyBearNeonWorkStealingBackend;
 
         // n covers: fallback (8 < 16), NEON without radix-4 pass (16), NEON
-        // with radix-4 + u64-acc passes (1024/4096)
-        for (num_threads, num_cols, n_log, lde) in
-            [(4, 5, 3, 2), (4, 3, 4, 2), (4, 5, 10, 8), (8, 2, 12, 2)]
-        {
+        // with radix-4 + u64-acc passes (1024/4096), production size (2^20)
+        for (num_threads, num_cols, n_log, lde) in [
+            (4, 5, 3, 2),
+            (4, 3, 4, 2),
+            (4, 5, 10, 8),
+            (8, 2, 12, 2),
+            (8, 4, 20, 2),
+        ] {
             let worker = Worker::new_with_num_threads(num_threads);
             let n = 1usize << n_log;
             let twiddles = Twiddles::<F, Global>::new(n, &worker);
@@ -1660,10 +1592,15 @@ mod tests {
         let backend = BabyBearAvx2WorkStealingBackend;
 
         // n covers: fallback (8 < 16), AVX2 base fallback (16 < 32), AVX2
-        // with radix-4 + u64-acc passes (1024/4096)
-        for (num_threads, num_cols, n_log, lde) in
-            [(4, 5, 3, 2), (4, 3, 4, 2), (4, 5, 10, 8), (8, 2, 12, 2)]
-        {
+        // with radix-4 + u64-acc passes (1024/4096), blocked all-threads
+        // plan (2^20)
+        for (num_threads, num_cols, n_log, lde) in [
+            (4, 5, 3, 2),
+            (4, 3, 4, 2),
+            (4, 5, 10, 8),
+            (8, 2, 12, 2),
+            (8, 4, 20, 2),
+        ] {
             let worker = Worker::new_with_num_threads(num_threads);
             let n = 1usize << n_log;
             let twiddles = Twiddles::<F, Global>::new(n, &worker);

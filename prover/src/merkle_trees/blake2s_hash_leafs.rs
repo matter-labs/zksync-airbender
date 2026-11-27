@@ -267,20 +267,6 @@ impl<'a, F: PrimeField, E: FieldExtension<F> + field::Field, L: CosetLeafAccesso
         for accessor in self.coset.iter() {
             ebuf.clear();
             ebuf.resize(count * vpl, E::ZERO);
-            if accessor.leaves_into_slot_major(first, count, &mut ebuf[..]) {
-                for (w, dst) in dsts.iter_mut().enumerate() {
-                    for k in 0..vpl {
-                        let as_base = extension_field_into_base_coeffs(ebuf[k * count + w]);
-                        dst.extend(
-                            as_base
-                                .as_ref()
-                                .iter()
-                                .map(|el| el.as_u32_raw_repr_reduced()),
-                        );
-                    }
-                }
-                continue;
-            }
             accessor.leaves_into(first, count, &mut ebuf[..]);
             for (w, dst) in dsts.iter_mut().enumerate() {
                 for el in ebuf[w * vpl..(w + 1) * vpl].iter() {
@@ -361,10 +347,8 @@ unsafe fn hash_leaf_scalar<
 /// hash-only ceiling). Digests are untouched: each leaf's absorb sequence is
 /// exactly the scalar one, only independent leaves are reordered in time.
 ///
-/// The 4-way blocks start at a leaf index that is a multiple of 4 (a scalar
-/// head absorbs the misaligned start of a thread's range): block gathers may
-/// then load four consecutive leaves' values as one aligned vector each (the
-/// by-coefficient WHIR oracle's limb columns).
+/// A scalar head handles any misaligned start so four-leaf blocks start at
+/// a leaf index that is a multiple of four.
 unsafe fn hash_coset_leaf_range<
     F: PrimeField,
     E: FieldExtension<F>,

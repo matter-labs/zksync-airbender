@@ -11,7 +11,6 @@ categories.workspace = true
 
 [dependencies]
 field = { workspace = true }
-unroll = { workspace = true }
 verifier_common = { workspace = true , default-features = false }
 
 [features]
@@ -21,7 +20,6 @@ miri_circuits = ["proof_utils", "verifier_common/test_compression"]
 miri_compression = ["proof_utils"]
 miri_compression_coverage = ["miri_compression", "verifier_common/multiproof_coverage"]
 blake2_with_compression = ["verifier_common/blake2_with_compression"]
-blake2_g_function = ["verifier_common/blake2_g_function"]
 mop_extension = ["verifier_common/mop_extension"]
 special_opcodes_extension = ["verifier_common/special_opcodes_extension"]
 modular_ops = ["verifier_common/modular_ops"]
@@ -33,17 +31,12 @@ verifier_stats = ["verifier_common/verifier_stats"]
 
 
 [dev-dependencies]
-test_utils = { workspace = true }
 serde = "1"
 serde_json = "*"
 prover = {workspace = true, default-features = true}
-proc-macro2 = { version = "1" }
-quote = { version = "1" }
 verifier_common = { workspace = true, features = ["proof_utils"] }
 riscv_transpiler = { workspace = true, features = ["flamegraph"] }
 common_constants = { workspace = true }
-verifier_generator = { workspace = true }
-rayon = "1.11.0"
 paste = "1"
 
 [[test]]

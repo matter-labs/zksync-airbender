@@ -19,26 +19,18 @@
 //!   multiplications a `mulx`/`adcx`/`adox` schoolbook product (BMI2 and ADX).
 //!
 //! The effects are those of `bigint_implementation`, which stays the reference (and the
-//! fallback for processors without BMI2/ADX, or on request with the environment variable
-//! `RISCV_JIT_BIGINT_HANDLER=rust`): the words of `b`, then of `a`, go to the trace with their
-//! previous timestamps, the timestamps of those words and of `a0`/`a1`/`a2` become the write
-//! timestamp, `a` receives the result, `a2` and the 17-th trace element the overflow flag.
+//! fallback for processors without BMI2/ADX): the words of `b`, then of `a`, go to the trace
+//! with their previous timestamps, the timestamps of those words and of `a0`/`a1`/`a2` become
+//! the write timestamp, `a` receives the result, `a2` and the 17-th trace element the overflow
+//! flag.
 
 use super::*;
 use dynasmrt::{dynasm, x64, DynasmApi, DynasmLabelApi};
 
-/// Whether the JIT emits the routine instead of calls into `bigint_implementation`: it does by
-/// default, on every processor with BMI2 and ADX
+/// Whether the JIT emits the routine instead of calls into `bigint_implementation`: it does on
+/// every processor with BMI2 and ADX
 pub(crate) fn bigint_asm_enabled() -> bool {
-    let requested = match std::env::var("RISCV_JIT_BIGINT_HANDLER") {
-        Ok(value) if value == "rust" => false,
-        Ok(value) if value == "asm" => true,
-        Ok(value) => panic!("RISCV_JIT_BIGINT_HANDLER must be 'asm' or 'rust' (got {value:?})"),
-        Err(_) => true,
-    };
-    requested
-        && std::arch::is_x86_feature_detected!("bmi2")
-        && std::arch::is_x86_feature_detected!("adx")
+    std::arch::is_x86_feature_detected!("bmi2") && std::arch::is_x86_feature_detected!("adx")
 }
 
 /// The end of the routine for operands or a control mask that `bigint_implementation` rejects
@@ -584,20 +576,6 @@ mod tests {
             a2,
             register_timestamps,
         }
-    }
-
-    /// The routine is what the JIT uses unless the Rust handler is asked for
-    #[test]
-    fn routine_is_the_default() {
-        if std::env::var_os("RISCV_JIT_BIGINT_HANDLER").is_some() {
-            eprintln!("RISCV_JIT_BIGINT_HANDLER is set, the default is not in effect");
-            return;
-        }
-        assert_eq!(
-            bigint_asm_enabled(),
-            std::arch::is_x86_feature_detected!("bmi2")
-                && std::arch::is_x86_feature_detected!("adx")
-        );
     }
 
     /// The routine against `bigint_implementation` on the same inputs: every operation with and

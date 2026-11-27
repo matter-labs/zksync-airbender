@@ -35,14 +35,8 @@ required-features = ["jit"]
 jit = ["dynasmrt", "capstone"]
 flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:rayon"]
 default = ["jit"]
-# NOTE: word load/store fusion (the eager, packed-timestamp path) is always compiled and is
-# controlled SOLELY by the RISCV_MERGE_WINDOW env var: the merge width (max group size) is one
-# of 0/2/4/8 (0 disables merging), default 4 when unset; an out-of-set value panics at JIT
-# build. It BLINDLY ASSUMES no jump target lands between the merged accesses.
-# See `emit_merged_word_run` / `merge_window` in src/jit/impls.rs.
 
 [dev-dependencies]
-test_utils = { workspace = true }
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git" }
 hex = "*"
 serial_test = "*"

@@ -45,17 +45,18 @@ const CORPUS: &[(&str, &str)] = &[
 ];
 
 const PROTH120_CORPUS: &[(&str, &str, usize)] = &[(
-    "unified_reduced_machine_layout_gkr_proth120.json",
+    "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json",
     "unified_reduced_machine",
     4,
 )];
 
 #[test]
 fn proth120_retained_forward_artifacts_compile_and_encode() {
-    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
-    for &(layout_name, stem, budget) in PROTH120_CORPUS {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let directory = root.join("cs/compiled_circuits");
+    for &(layout_path, stem, budget) in PROTH120_CORPUS {
         let layout: GKRCircuitArtifact<Proth120> =
-            serde_json::from_slice(&std::fs::read(directory.join(layout_name)).unwrap()).unwrap();
+            serde_json::from_slice(&std::fs::read(root.join(layout_path)).unwrap()).unwrap();
         let dag = lower_dag(&layout).unwrap();
         let name = format!("{stem}_schedule_b{budget}_gkr_proth120.json");
         let artifact =

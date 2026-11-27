@@ -270,13 +270,6 @@ pub trait CosetLeafAccessor<T>: Sync {
             self.leaf_into(first_leaf + w, chunk);
         }
     }
-    /// Leaves `first_leaf .. first_leaf + count` SLOT-MAJOR into `out`
-    /// (`out[k * count + w]` = slot `k` of leaf `w`) when the accessor can
-    /// produce that layout directly (`true`); `false` leaves `out` untouched
-    /// and the caller falls back to [`Self::leaves_into`].
-    fn leaves_into_slot_major(&self, _first_leaf: usize, _count: usize, _out: &mut [T]) -> bool {
-        false
-    }
 }
 
 /// The plain (no conversion) leaf accessor over a contiguous column.

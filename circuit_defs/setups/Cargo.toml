@@ -42,10 +42,7 @@ serde = { workspace = true }
 serde_json = "*"
 serde-big-array = "*"
 proc-macro2 = { version = "1" }
-syn = { version = "2" }
 quote = { version = "1" }
-sha3 = { workspace = true }
-hex = "*"
 
 [features]
 default = ["witness_eval_fn"]

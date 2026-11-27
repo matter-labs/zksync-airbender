@@ -13,7 +13,6 @@ categories.workspace = true
 circuit_common = { workspace = true }
 common_constants = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
-witness_eval_generator = { workspace = true }
 
 [features]
 

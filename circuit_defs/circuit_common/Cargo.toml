@@ -12,8 +12,6 @@ categories.workspace = true
 [dependencies]
 common_constants = { workspace = true }
 field = { workspace = true }
-fft = { workspace = true }
-worker = { workspace = true }
 cs = { workspace = true, features = ["compiler"] }
 prover = { workspace = true, features = ["prover"] }
 witness_eval_generator = { workspace = true }

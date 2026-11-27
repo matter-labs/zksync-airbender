@@ -18,7 +18,6 @@
 # --- Generated source (Rust + CUDA) ---
 generated/
 compiled_circuits/
-tools/generator/output/
 
 # --- Proof, witness, and layout artifacts ---
 prover/test_proofs/

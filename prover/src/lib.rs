@@ -7,12 +7,6 @@
     feature(const_type_name)
 )] // const-fn type dispatch for vectorized kernels
 
-#[cfg(feature = "debug_satisfiable")]
-pub const DEBUG_QUOTIENT: bool = true;
-
-#[cfg(not(feature = "debug_satisfiable"))]
-pub const DEBUG_QUOTIENT: bool = false;
-
 pub mod definitions;
 pub mod utils;
 

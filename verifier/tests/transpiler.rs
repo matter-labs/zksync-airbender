@@ -25,7 +25,7 @@ fn run_transpiler(name: &str, level: SecurityLevel, mode: SoundnessMode) {
 }
 
 /// [`run_transpiler_on_with_output`] writing `gkr_flamegraph_<name>.svg` into
-/// the current directory (the tracked per-circuit flamegraphs).
+/// the current directory (the per-circuit flamegraphs).
 fn run_transpiler_on(
     name: &str,
     nds: Vec<u32>,

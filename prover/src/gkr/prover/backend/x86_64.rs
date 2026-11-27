@@ -106,123 +106,6 @@ impl ExtCoeffConversion<BabyBearField, BabyBearExt4> for BabyBearAvx2ExtCoeffCon
     }
 
     #[inline(always)]
-    fn convert_gathered_leaf(
-        &self,
-        offset_inv: BabyBearField,
-        leaf_index: usize,
-        leaf: &mut [BabyBearExt4],
-    ) {
-        if !self.avx2_applicable() {
-            return self.ctx.convert_gathered_leaf(offset_inv, leaf_index, leaf);
-        }
-        fft::baby_bear_avx2::ext4::leaf_to_coeff_form(
-            leaf,
-            &self.hp_raw,
-            self.ctx.two_inv,
-            self.root_inv_raw(offset_inv, leaf_index),
-        );
-    }
-
-    #[inline(always)]
-    fn convert_gathered_leaves(
-        &self,
-        offset_inv: BabyBearField,
-        first_leaf: usize,
-        count: usize,
-        leaves: &mut [BabyBearExt4],
-    ) {
-        let vpl = self.ctx.values_per_leaf;
-        if !self.avx2_applicable() {
-            for (w, chunk) in leaves[..count * vpl].chunks_exact_mut(vpl).enumerate() {
-                self.ctx
-                    .convert_gathered_leaf(offset_inv, first_leaf + w, chunk);
-            }
-            return;
-        }
-        // pairs of leaves, slot-interleaved, through the two-leaf kernel
-        let mut pair = [BabyBearExt4::ZERO; 64];
-        let mut w = 0;
-        while w + 2 <= count {
-            let (l0, l1) = (first_leaf + w, first_leaf + w + 1);
-            {
-                let (a, b) = leaves[w * vpl..(w + 2) * vpl].split_at(vpl);
-                for k in 0..vpl {
-                    pair[2 * k] = a[k];
-                    pair[2 * k + 1] = b[k];
-                }
-            }
-            fft::baby_bear_avx2::ext4::leaf_pair_to_coeff_form(
-                &mut pair[..2 * vpl],
-                &self.hp_raw,
-                self.ctx.two_inv,
-                [
-                    self.root_inv_raw(offset_inv, l0),
-                    self.root_inv_raw(offset_inv, l1),
-                ],
-            );
-            let (o0, o1) = leaves[w * vpl..(w + 2) * vpl].split_at_mut(vpl);
-            for k in 0..vpl {
-                o0[k] = pair[2 * k];
-                o1[k] = pair[2 * k + 1];
-            }
-            w += 2;
-        }
-        if w < count {
-            self.convert_gathered_leaf(
-                offset_inv,
-                first_leaf + w,
-                &mut leaves[w * vpl..(w + 1) * vpl],
-            );
-        }
-    }
-
-    #[inline(always)]
-    fn convert_gathered_block(
-        &self,
-        offset_inv: BabyBearField,
-        first_leaf: usize,
-        count: usize,
-        block: &mut [BabyBearExt4],
-    ) {
-        let vpl = self.ctx.values_per_leaf;
-        if self.avx2_applicable() && (count == 4 || count == 2) {
-            let mut roots = [0u32; 4];
-            for (w, r) in roots[..count].iter_mut().enumerate() {
-                *r = self.root_inv_raw(offset_inv, first_leaf + w);
-            }
-            if count == 4 {
-                fft::baby_bear_avx2::ext4::leaf_quad_to_coeff_form(
-                    &mut block[..4 * vpl],
-                    &self.hp_raw,
-                    self.ctx.two_inv,
-                    roots,
-                );
-            } else {
-                fft::baby_bear_avx2::ext4::leaf_pair_to_coeff_form(
-                    &mut block[..2 * vpl],
-                    &self.hp_raw,
-                    self.ctx.two_inv,
-                    [roots[0], roots[1]],
-                );
-            }
-            return;
-        }
-        // generic layout shuffle around the per-leaf conversion
-        let mut leaves = vec![BabyBearExt4::ZERO; count * vpl];
-        for w in 0..count {
-            for k in 0..vpl {
-                leaves[w * vpl + k] = block[k * count + w];
-            }
-        }
-        self.convert_gathered_leaves(offset_inv, first_leaf, count, &mut leaves);
-        for w in 0..count {
-            for k in 0..vpl {
-                block[k * count + w] = leaves[w * vpl + k];
-            }
-        }
-    }
-
-    #[inline(always)]
     fn convert_leaf(
         &self,
         column: &[BabyBearExt4],
@@ -578,14 +461,13 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx2WorkStealingBackend {
 }
 
 #[cfg(test)]
-mod gathered_conversion_tests {
+mod leaf_conversion_tests {
     use super::*;
     use field::Rand;
 
-    /// The gathered-leaf conversions (single and pairs) must equal the
-    /// column-gathering ones for every leaf size the AVX2 kernels serve.
+    /// Batched AVX2 leaf conversion agrees with scalar conversion of individual leaves.
     #[test]
-    fn avx2_gathered_conversion_matches_column() {
+    fn avx2_paired_leaf_conversion_matches_scalar() {
         let mut rng = rand::rng();
         let coset_len = 1usize << 12;
         let column: Vec<BabyBearExt4> = (0..coset_len)
@@ -595,7 +477,7 @@ mod gathered_conversion_tests {
         let offset_inv = offset.inverse().unwrap();
         for vpl in [2usize, 4, 8, 16, 32, 64] {
             let conv = BabyBearAvx2ExtCoeffConv::new(coset_len, vpl);
-            let offsets = crate::gkr::whir::offsets_vec_for_leaf_construction(coset_len, vpl);
+            assert_eq!(conv.avx2_applicable(), vpl <= 32, "vpl {vpl}");
             let num_leaves = coset_len / vpl;
             for (first, count) in [
                 (0usize, 1usize),
@@ -604,49 +486,21 @@ mod gathered_conversion_tests {
                 (num_leaves - 4, 4),
                 (num_leaves - 3, 3),
             ] {
-                let mut a = vec![BabyBearExt4::ZERO; count * vpl];
-                ExtCoeffConversion::<BabyBearField, BabyBearExt4>::convert_leaves(
-                    &conv, &column, offset_inv, first, count, &mut a,
+                let mut batched = vec![BabyBearExt4::ZERO; count * vpl];
+                ExtCoeffConversion::convert_leaves(
+                    &conv,
+                    &column,
+                    offset_inv,
+                    first,
+                    count,
+                    &mut batched,
                 );
-                let mut b = vec![BabyBearExt4::ZERO; count * vpl];
-                for w in 0..count {
-                    for (k, &off) in offsets.iter().enumerate() {
-                        b[w * vpl + k] = column[off + first + w];
-                    }
+                let mut scalar = vec![BabyBearExt4::ZERO; count * vpl];
+                for (leaf, out) in scalar.chunks_exact_mut(vpl).enumerate() {
+                    conv.ctx
+                        .convert_leaf(&column, offset_inv, first + leaf, out);
                 }
-                let mut c = b.clone();
-                ExtCoeffConversion::<BabyBearField, BabyBearExt4>::convert_gathered_leaves(
-                    &conv, offset_inv, first, count, &mut b,
-                );
-                assert_eq!(a, b, "pairs: vpl {vpl} first {first} count {count}");
-                // slot-major block variant
-                let mut blk = vec![BabyBearExt4::ZERO; count * vpl];
-                for w in 0..count {
-                    for (k, &off) in offsets.iter().enumerate() {
-                        blk[k * count + w] = column[off + first + w];
-                    }
-                }
-                ExtCoeffConversion::<BabyBearField, BabyBearExt4>::convert_gathered_block(
-                    &conv, offset_inv, first, count, &mut blk,
-                );
-                for w in 0..count {
-                    for k in 0..vpl {
-                        assert_eq!(
-                            blk[k * count + w],
-                            a[w * vpl + k],
-                            "block: vpl {vpl} first {first} count {count} leaf {w} slot {k}"
-                        );
-                    }
-                }
-                for w in 0..count {
-                    ExtCoeffConversion::<BabyBearField, BabyBearExt4>::convert_gathered_leaf(
-                        &conv,
-                        offset_inv,
-                        first + w,
-                        &mut c[w * vpl..(w + 1) * vpl],
-                    );
-                }
-                assert_eq!(a, c, "single: vpl {vpl} first {first} count {count}");
+                assert_eq!(batched, scalar, "vpl {vpl} first {first} count {count}");
             }
         }
     }

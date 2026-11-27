@@ -14,7 +14,7 @@ usage() {
     echo "Usage: $0 [options] [circuits...]"
     echo ""
     echo "Options:"
-    echo "  --blake MODE    blake2_with_compression (default), blake2_g_function, mop_extension"
+    echo "  --blake MODE    blake2_with_compression (default), special_opcodes_extension, mop_extension"
     echo "  --variant VAR   no_caches (default) or caches"
     echo "  --sec LEVEL     only 100 bits is accepted"
     echo "  --mode MODE     per-circuit verifiers of one soundness mode only"

@@ -37,8 +37,9 @@ root.
 
 The widths and the first layer's gate count are those of the committed layouts
 `cs/compiled_circuits/unified_reduced_machine_layout_gkr.json` and
-`unified_reduced_machine_layout_gkr_proth120.json` (`memory_layout.total_width`,
-`witness_layout.total_width`, `layers[0].gates`), against the same files before the column cuts.
+`circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json`
+(`memory_layout.total_width`, `witness_layout.total_width`, `layers[0].gates`), against the
+same files before the column cuts.
 
 The eight columns, by their names in the previous layout:
 
@@ -293,7 +294,7 @@ leaves in that slot. Family 3 writes its byte splits as
 | The PC-bump carry at the 0xFFFC boundary | `tests::single_cycle_tests::unified_circuit_tests::pc_carry_boundary_tests::pc_bump_carry_boundary_rejects_forgeries` | `prover` | honest carry, dropped carry, unchanged high limb; both fields |
 | Generated witness code is satisfying on real traces (§4) | `tests::gkr::unified_generated_witness::generated_witness_satisfies_{regular_layout,proth120_wrap_layout}` | `prover` | also asserts a non-F3 row with a register limb above 0xFF in slot 17 |
 | Committed CUDA witness source and forward schedule follow the new layout | `gpu_witness_eval_generator` `tests::{committed_witness_cuh_is_current, every_committed_cuh_is_listed}`; `gpu_gkr_compiler` `every_retained_forward_artifact_validates_compiles_and_encodes` (`tests/forward_corpus.rs`) | GPU crates | currentness guards, no GPU needed; they do not establish GPU execution parity |
-| BabyBear proof generation and native verification | `fixtures/regenerate.sh --stage circuits`; `verifier::native::unified_reduced_machine_{pessimistic_conjecture,ethproofs_soundcalc}` | `prover`, `verifier` | The canonical producer regenerates all 28 proofs, including independent compression and unified proofs from the shared deterministic `blake2_with_compression` workload. Native tests verify both committed unified proofs. |
+| BabyBear proof generation and native verification | `fixtures/regenerate.sh --stage circuits`; `verifier::native::unified_reduced_machine_{pessimistic_conjecture,ethproofs_soundcalc}` | `prover`, `verifier` | The canonical producer regenerates all canonical proofs, including independent compression and unified proofs from the shared deterministic `blake2_with_compression` workload. Native tests verify both committed unified proofs. |
 | Full-statement verification of the CPU chain artifacts | `full_statement_verifier::unified::{unified_recursion_layer_accepts_valid_proof, unified_recursion_layer_rejects_corrupted_stream, rejects_corrupted_setup_cap, rejects_tampered_final_register_state, rejects_num_it_circuits_zero, rejects_num_it_circuits_exceeds_num_circuits, rejects_duplicated_multi_instance, unified_recursion_layer_transpiler_accepts_valid_proof}` | `full_statement_verifier` | Seven native tests cover both unified chain artifacts in both soundness modes. The ignored transpiler test runs their registered Compression recursion guests. |
 | Proth120 2^21 wrap proof and calldata consistency | CLI producers in `fixtures/README.md`; EVM contract/calldata producers and Foundry checks | `prover_pipeline`, `verifier_evm` | The CLI produces the seed, terminal compression and L1 artifacts; EVM producers read `.l1` from `l1.json`. Follow the fixture README for the commands and raw byte comparison. |
 | EVM wrap verifier acceptance and rejection | `MergedTest::{test_merged_single_tx, test_rejects_non_canonical_lane, test_registry_matches_deploy_create2_address, test_refusing_registry_fails_verification, test_rejects_wrong_final_pc, test_rejects_altered_setup_data}` | `verifier_evm` Foundry suite | `verifier_evm/tests/forge/Merged.t.sol` is rendered per mode into `generated_contracts/<mode>/merged/test/`. The verifier checks the wrap proof and binds its statement to the registry. It rejects malformed streams and changed setup data. |
@@ -334,17 +335,17 @@ two observed proof classes.
 Release builds; `RUST_MIN_STACK=1073741824`:
 
 ```sh
-# the four layouts and the two SSA graphs
+# the cs layouts and SSA graphs
 cargo test -p cs --release --lib -- --exact \
   gkr_circuits::unified_reduced_machine::circuit::test::compile_unified_reduced_machine_into_gkr \
   gkr_circuits::unified_reduced_machine::circuit::test::compile_unified_reduced_machine_into_no_caches_gkr \
   gkr_circuits::unified_reduced_machine::circuit::test::compile_unified_reduced_machine_gkr_witness_graph \
-  gkr_circuits::unified_reduced_machine::circuit::test::compile_unified_reduced_machine_into_gkr_large_field \
   gkr_circuits::unified_reduced_machine::circuit::test::compile_unified_reduced_machine_gkr_witness_graph_large_field \
   --test-threads=1
 # generated Rust witness functions, circuit-crate artifacts, CUDA witness, forward schedule, verifiers
-cargo test -p witness_eval_generator --release --lib -- --exact derive_from_ssa::test::gen_for_gkr derive_from_ssa::test::gen_for_large_field --test-threads=1
+cargo test -p witness_eval_generator --release --lib -- --exact derive_from_ssa::test::gen_for_gkr --test-threads=1
 cargo test -p unified_reduced_machine --release --lib test::generate -- --exact
+cargo test -p unified_reduced_machine_proth120_2_21 --release --lib test::generate -- --exact
 cargo run --release -p gpu_witness_eval_generator --bin generate -- cs/compiled_circuits/unified_reduced_machine_layout_gkr.json cs/compiled_circuits/unified_reduced_machine_ssa_gkr.json circuit_defs/unrolled_circuits/unified_reduced_machine/generated/witness_generation_fn.cuh
 cargo run --release -p gpu_gkr_compiler --features search --bin gkr-forward-artifact -- --if-stale --circuit unified_reduced_machine --layout cs/compiled_circuits/unified_reduced_machine_layout_gkr.json --output cs/compiled_circuits/unified_reduced_machine_schedule_b4_gkr.json --seed 42 --cache-buckets 4 --population 64 --evaluations 1024
 cargo test -p verifier_generator --no-default-features --test generate_verifiers -- --exact unified_reduced_machine unified_reduced_machine_compression_final --test-threads=1

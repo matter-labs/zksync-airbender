@@ -13,8 +13,5 @@ categories.workspace = true
 rayon = "1"
 num_cpus = "1"
 
-[target.'cfg(target_os = "linux")'.dependencies]
-libc = "0.2"
-
 [lints]
 workspace = true

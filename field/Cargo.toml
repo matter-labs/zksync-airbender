@@ -13,7 +13,6 @@ categories.workspace = true
 common_constants = { workspace = true }
 serde = { workspace = true }
 rand = { workspace = true, default-features = false }
-seq-macro = "0.3"
 proc-macro2 = {version = "1", optional = true }
 quote = {version = "1", optional = true }
 

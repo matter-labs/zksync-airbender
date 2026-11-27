@@ -707,46 +707,22 @@ macro_rules! emit_early_exit {
 // BLINDLY ASSUMES no control-flow target lands strictly inside the run (the caller binds the
 // inner instruction labels to the run head defensively, so a stray jump cannot crash the JIT).
 //
-// `window` (max group size, one of 0/2/4/8; 0 disables) comes from RISCV_MERGE_WINDOW
-// (default 4 when unset).
-pub(crate) fn merge_window() -> usize {
-    use std::sync::OnceLock;
-    static W: OnceLock<usize> = OnceLock::new();
-    *W.get_or_init(|| match std::env::var("RISCV_MERGE_WINDOW") {
-        Ok(s) => {
-            let w: usize = s.parse().unwrap_or_else(|_| {
-                panic!("RISCV_MERGE_WINDOW must be 0, 2, 4 or 8 (got {:?})", s)
-            });
-            assert!(
-                matches!(w, 0 | 2 | 4 | 8),
-                "RISCV_MERGE_WINDOW must be 0, 2, 4 or 8 (got {})",
-                w
-            );
-            w // 0 disables merging (see `merged_word_run_g`)
-        }
-        Err(_) => 4, // default window when unset
-    })
-}
+/// Largest fusable group size (one, two or four) of the run of consecutive
+/// same-opcode, same-base word accesses with immediate stride exactly +4
+/// starting at `i`. Returns 1 when nothing fuses.
+fn merged_word_run_g(program: &[Instruction], is_static_target: &[bool], i: usize) -> usize {
+    const MAX_GROUP_SIZE: usize = 4;
 
-/// Largest fusable group size (a power of two in {1,2,4,8}, capped by `window`) of the run of
-/// consecutive same-opcode, same-base word accesses with immediate stride exactly +4 starting
-/// at `i`. Returns 1 when nothing fuses.
-fn merged_word_run_g(
-    program: &[Instruction],
-    is_static_target: &[bool],
-    i: usize,
-    window: usize,
-) -> usize {
     use InstructionName as Op;
     let a = &program[i];
-    if window < 2 || !matches!(a.name, Op::Lw | Op::Sw) {
+    if !matches!(a.name, Op::Lw | Op::Sw) {
         return 1;
     }
     let op = a.name;
     let base = a.rs1;
     let is_load = matches!(op, Op::Lw);
     let mut run = 1usize;
-    while run < window && i + run < program.len() {
+    while run < MAX_GROUP_SIZE && i + run < program.len() {
         let prev = &program[i + run - 1];
         let nxt = &program[i + run];
         // A load that overwrites the base register changes the address seen by every later
@@ -768,13 +744,13 @@ fn merged_word_run_g(
         run += 1;
     }
     let mut g = 1usize;
-    while g * 2 <= run && g * 2 <= window {
+    while g * 2 <= run {
         g *= 2;
     }
     g
 }
 
-/// Emit a fused run of `g` (a power of two in {2,4,8}) consecutive word loads or stores. Does
+/// Emit a fused run of `g` (2 or 4) consecutive word loads or stores. Does
 /// NOT touch r9; the caller advances r9 by g and does the chunk-full check. Advances r8 by 4*g.
 fn emit_merged_word_run(
     ops: &mut x64::Assembler,
@@ -887,7 +863,7 @@ fn emit_merged_word_run(
     }
 
     // (5) Loads only: distribute the read values to their destination registers (scalar reload
-    //     from RAM; the value column may span more than one xmm for g==8).
+    //     from RAM).
     if is_load {
         for j in 0..g {
             let rd = program[start + j].rd as u32;
@@ -935,10 +911,9 @@ fn emit_merged_word_run(
 //     one conditional subtract), per `field::baby_bear::ops::basic`.
 // FMA computes `rd = rs1*rs2 + rd_old` in the field (reading rd's OLD value, no timestamp touch).
 // The field is an explicit `preprocess_bytecode` parameter — the caller must pass the same
-// field its replayer/witness pipeline uses (`mop_field()` reads `RISCV_MOP_FIELD` for
-// env-driven callers such as the JIT differential tests). The emitter only
-// loads operands and leaves the reduced result in `out`; the caller owns the timestamp touches
-// (rs1@+0, rs2@+1, rd@+2), `store_result`, and the AddSubLui family counter.
+// field its replayer/witness pipeline uses. The emitter only loads operands and leaves the
+// reduced result in `out`; the caller owns the timestamp touches (rs1@+0, rs2@+1, rd@+2),
+// `store_result`, and the AddSubLui family counter.
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MopField {
@@ -949,27 +924,6 @@ pub enum MopField {
     /// result diverges from the reference semantics (`from_raw_repr_with_reduction`), so it
     /// is only suitable for programs that are known to uphold it.
     BabyBearAssumeCanonical,
-}
-
-/// Env-driven MOP field selection for callers without a fixed field (e.g. the JIT differential
-/// tests): reads `RISCV_MOP_FIELD` (default `BabyBear`); an unrecognized value panics. Intentionally
-/// not cached, so a single process can build JITs for different fields by changing the variable
-/// between builds. Production pipelines should pass their field to `preprocess_bytecode`
-/// explicitly instead of relying on process env.
-pub fn mop_field() -> MopField {
-    match std::env::var("RISCV_MOP_FIELD") {
-        Ok(s) => match s.to_ascii_lowercase().as_str() {
-            "babybear" | "baby_bear" | "bb" => MopField::BabyBear,
-            "babybear_assume_canonical" | "baby_bear_assume_canonical" | "bb_assume_canonical" => {
-                MopField::BabyBearAssumeCanonical
-            }
-            other => panic!(
-                "RISCV_MOP_FIELD must be 'babybear' or 'babybear_assume_canonical' (got {:?})",
-                other
-            ),
-        },
-        Err(_) => MopField::BabyBear,
-    }
 }
 
 const BB_ORDER: i32 = 0x7800_0001u32 as i32; // BabyBear p = 2^31 - 2^27 + 1
@@ -1354,13 +1308,13 @@ impl<I: ContextImpl> JittedCode<I> {
             // print_registers!(ops, pc, instr);
 
             // Fuse a run of consecutive same-base word loads/stores (immediate stride +4) into
-            // wide vector memory/trace stores (packed path; RISCV_MERGE_WINDOW). The emitter
+            // wide vector memory/trace stores (packed path). The emitter
             // does all packed/timestamp/trace/counter bookkeeping for the whole run, so it
             // bypasses the per-instruction prologue and dispatch below.
             if !large_timestamps_offset
                 && matches!(instr.name, InstructionName::Lw | InstructionName::Sw)
             {
-                let g = merged_word_run_g(program, &is_static_target, i, merge_window());
+                let g = merged_word_run_g(program, &is_static_target, i);
                 if g >= 2 {
                     // Defensively bind the inner instruction labels / jump offsets to the
                     // run head (the no-inner-target assumption means they're never used; this
@@ -2450,23 +2404,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             ;; check_to_save_trace!(ops, pc_for_trace)
                         );
                     } else {
-                        let (spill_knob, call_knob) = match instr.imm {
-                            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER => (
-                                "RISCV_ABLATE_DELEG_SPILL_DUP",
-                                "RISCV_ABLATE_DELEG_CALL_DUP",
-                            ),
-                            _ => (
-                                "RISCV_ABLATE_KECCAK_SPILL_DUP",
-                                "RISCV_ABLATE_KECCAK_CALL_DUP",
-                            ),
-                        };
-                        let spill_dup = ablation_knob(spill_knob);
-                        let call_dup = ablation_knob(call_knob);
                         dynasm!(ops ; .arch x64 ; mov rdx, rsp);
-                        for _ in 0..spill_dup {
-                            save_machine_state!(ops);
-                            update_machine_state_post_call!(ops);
-                        }
                         dynasm!(ops
                             ; .arch x64
                             ;; before_call!(ops) // will save rsi and rdi
@@ -2475,17 +2413,6 @@ impl<I: ContextImpl> JittedCode<I> {
                             ; mov [rdi + (TraceChunk::LEN_OFFSET as i32)], r9
                             ; sub rsp, 8
                         );
-                        for _ in 0..call_dup {
-                            dynasm!(ops
-                                ; .arch x64
-                                ; mov rax, QWORD (ablation_empty_handler as *const ()).addr() as isize as i64
-                                ; call rax
-                                // the arguments of the real call, from where they were pushed
-                                ; mov rdx, [rsp + 8]
-                                ; mov rdi, [rsp + 16]
-                                ; mov rsi, [rsp + 24]
-                            );
-                        }
                         dynasm!(ops
                             ; .arch x64
                             ; mov rax, QWORD (function as *const ()).addr() as usize as isize as i64
@@ -2613,7 +2540,7 @@ impl<I: ContextImpl> JittedCode<I> {
         // (`emit_merged_word_run`): word w of a run gets memory timestamp T0 + (4*w + delta),
         // delta = 1 for loads, 2 for stores. These hold the (4*w + delta) addends as u64 so a
         // 128-bit load of two adjacent entries plus a broadcast `paddq` of T0 builds two
-        // consecutive new timestamps. Sized for the largest window (8 words).
+        // consecutive new timestamps. Keep eight entries for the generated code layout.
         dynasm!(ops
             ; .arch x64
             ; .align 16
@@ -2715,6 +2642,7 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
         non_determinism_responses: &'a [u32],
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        mop_field: MopField,
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
@@ -2747,8 +2675,7 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner =
-            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field, ram_config);
 
         // Profiling baseline: when RISCV_PROFILE_SKIP_RUN is set we do all of the
         // setup (decode + JIT compile + the large allocations) but skip execution,
@@ -2783,13 +2710,10 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        mop_field: MopField,
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
-        // Per-run setup timings, printed when `AIRBENDER_HOST_TIMING` is set
-        let timing = std::env::var_os("AIRBENDER_HOST_TIMING").is_some();
-        let t = std::time::Instant::now();
-
         // println!("Preparing default context implementation");
         let implementation = DefaultContextImpl {
             non_determinism_source,
@@ -2822,46 +2746,21 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         //     (&*trace as *const TraceChunk).addr()
         // );
 
-        let alloc_time = t.elapsed();
-        let t = std::time::Instant::now();
         let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let decode_time = t.elapsed();
 
         // println!("Preprocessing the bytecode");
-        let t = std::time::Instant::now();
-        let runner =
-            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
-        let compile_time = t.elapsed();
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field, ram_config);
 
         // println!("Running the simulator");
-        let t = std::time::Instant::now();
         runner.run(
             &mut context,
             memory.as_mut(),
             unsafe { NonNull::new_unchecked(trace.as_mut() as *mut _) },
             initial_memory,
         );
-        if timing {
-            eprintln!(
-                "jit run_alternative_simulator: memory + trace alloc {alloc_time:?}, decode {decode_time:?} ({} instructions), jit compile {compile_time:?}, execution {:?}",
-                instructions.len(),
-                t.elapsed()
-            );
-            if let Some(state) = context.final_state_ref() {
-                eprintln!("jit final counters: {:?}", state.counters);
-            }
-            eprintln!(
-                "jit bigint delegations: {}",
-                if delegations::bigint_asm::bigint_asm_enabled() {
-                    "assembly routine"
-                } else {
-                    "Rust handler"
-                }
-            );
-        }
 
         // println!("Obtaining the final machine state");
         let final_state = context
@@ -2880,6 +2779,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        mop_field: MopField,
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
@@ -2896,7 +2796,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             MemoryHolder::allocate_zeroed(ram_config, Default::default());
         let mut trace: Box<TraceChunk> = unsafe { Box::new_zeroed().assume_init() };
 
-        let runner = Self::preprocess_bytecode(instructions, cycles_bound, mop_field(), ram_config);
+        let runner = Self::preprocess_bytecode(instructions, cycles_bound, mop_field, ram_config);
         runner.run(
             &mut context,
             memory.as_mut(),
@@ -2917,6 +2817,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        mop_field: MopField,
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>, Box<TraceChunk>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
@@ -2949,8 +2850,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner =
-            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field, ram_config);
 
         runner.run(
             &mut context,
@@ -2966,24 +2866,6 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
 
         (final_state, memory, trace)
     }
-}
-
-/// A profiling knob: the count in the environment variable `name`, 0 when unset
-pub(crate) fn ablation_knob(name: &str) -> usize {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.parse().expect("an ablation knob is a count"))
-        .unwrap_or(0)
-}
-
-/// The handler of the extra calls of `RISCV_ABLATE_DELEG_CALL_DUP`
-#[inline(never)]
-extern "sysv64" fn ablation_empty_handler(
-    trace_piece: &mut TraceChunk,
-    _memory_holder: NonNull<u64>,
-    _machine_state: &mut MachineState,
-) -> u64 {
-    core::hint::black_box(trace_piece.len)
 }
 
 extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(

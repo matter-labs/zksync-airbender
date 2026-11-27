@@ -19,7 +19,6 @@ setups = { workspace = true, features = ["witness_eval_fn"] }
 circuit_common = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
-bincode = { version = "1.3" }
 verifier_common = { workspace = true, default-features = false }
 full_statement_verifier = { workspace = true, default-features = false, features = ["proof_utils", "host_utils"]}
 
@@ -29,8 +28,6 @@ verifiers = ["verifier_common/no_inline", "full_statement_verifier/verifiers"]
 debug_logs = []
 # Will perform satisfiability tests on witness
 gkr_self_checks = ["prover/gkr_self_checks"]
-# Will evaluate quotient on main domain for satisfiability checks
-debug_satisfiable = ["prover/debug_satisfiable"]
 # Print logs related to timings only.
 timing_logs = []
 

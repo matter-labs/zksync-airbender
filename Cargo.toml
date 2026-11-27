@@ -5,7 +5,6 @@ members = [
     "blake2s_u32",
     "common_constants",
     "field",
-    "experiments_runner",
     "fixtures",
     "cs",
     "prover",
@@ -25,7 +24,6 @@ members = [
     "circuit_defs/circuit_common",
     "circuit_defs/trace_and_split",
     "circuit_defs/setups",
-    "circuit_defs/prover_examples",
 
 
     "gpu/core",
@@ -78,11 +76,6 @@ members = [
     "sumcheck_common",
 ]
 
-exclude = [
-    # Temporarily disabled until legacy generator dependencies are removed.
-    "tools/generator",
-]
-
 default-members = [
     "blake2s_u32",
     "common_constants",
@@ -94,7 +87,6 @@ default-members = [
     "circuit_defs/keccak_column_parity",
     "circuit_defs/keccak_special5",
     "circuit_defs/keccak_theta_rho",
-    "circuit_defs/prover_examples",
     "circuit_defs/setups",
     "circuit_defs/trace_and_split",
     "cpu_execution_prover",
@@ -167,7 +159,6 @@ fft = { path = "./fft" }
 prover = { path = "./prover", default-features = false }
 cs = { path = "./cs", default-features = false }
 transcript = { path = "./transcript", default-features = false }
-verifier_generator = { path = "./verifier_generator" }
 verifier_common = { path = "./verifier_common", default-features = false }
 
 circuit_common = { path = "./circuit_defs/circuit_common" }
@@ -203,7 +194,6 @@ full_statement_verifier  = { path = "./full_statement_verifier", default-feature
 non_determinism_source = { path = "./non_determinism_source", default-features = false }
 riscv_transpiler = { path = "./riscv_transpiler", default-features = false }
 witness_eval_generator = { path = "./witness_eval_generator", default-features = false }
-gpu_witness_eval_generator = { path = "./gpu/witness_eval_generator", default-features = false }
 gpu_core = { path = "./gpu/core" }
 gpu_native_build = { path = "./gpu/native_build" }
 gpu_hash = { path = "./gpu/hash" }
@@ -219,7 +209,6 @@ program_prover = { path = "./program_prover", default-features = false }
 cpu_execution_prover = { path = "./cpu_execution_prover", default-features = false }
 execution_prover = { path = "./execution_prover", default-features = false }
 execution_prover_model = { path = "./execution_prover_model" }
-prover_examples = { path = "./circuit_defs/prover_examples", default-features = false }
 prover_pipeline = { path = "./prover_pipeline", default-features = false }
 gpu_gkr_model = { path = "./gpu/gkr_model" }
 gpu_gkr_compiler = { path = "./gpu/gkr_compiler" }
@@ -240,7 +229,6 @@ sha3 = { version = "0.12", default-features = false }
 insta = "1.47.2"
 tempfile = "3.27.0"
 mmap-io = "1.0"
-cfg-if = "1"
 
 [profile.dev]
 debug-assertions = true
@@ -268,15 +256,6 @@ inherits = "release"
 lto = "thin"
 codegen-units = 16
 
-[profile.verifier]
-inherits = "release"
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-debug = false
-strip = true
-incremental = false
-
 # Special profile for compiling the cli tool.
 # that is doing some optimizations (otherwise proving is too slow)
 # but doesn't do them on verifier crate (as then the compilation can take over 15 min).
@@ -288,15 +267,3 @@ incremental = false
 
 [profile.cli.package.verifier]
 opt-level = 1
-
-# Special profile for ISA tests
-[profile.test-release]
-inherits = "release"  # Start with the release profile as a base
-opt-level = 2         # Moderate optimization (80% of opt-level 3, much faster compilation)
-codegen-units = 256   # High parallelism for faster compilation (default is 16 in release)
-lto = false           # Disable link-time optimization (LTO) to speed up linking
-incremental = true    # Enable incremental compilation for faster rebuilds
-debug = true         # Disable debug info to reduce compile time (optional, set to true if you need debugging)
-# strip = "symbols"     # Strip symbols to reduce binary size and linking time
-# panic = "unwind"      # Default panic strategy, no change needed (abort can be faster but less safe for tests)
-rpath = false         # Disable rpath (rarely needed, speeds up linking slightly)

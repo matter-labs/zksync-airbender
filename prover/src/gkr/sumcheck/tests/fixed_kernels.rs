@@ -257,7 +257,6 @@ fn test_extension_copy() {
 }
 
 #[test]
-#[ignore = "base field access in get_for_sumcheck_round_1 incomplete"]
 fn test_mask_into_identity_product() {
     const FOLDING_STEPS: usize = 4;
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;

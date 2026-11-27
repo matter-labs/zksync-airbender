@@ -92,5 +92,12 @@ fn committed_layouts_round_trip_and_compare_every_ungrouped_access() {
         }
         checked += 1;
     }
+    let wrap_layout = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json"
+    );
+    let text = std::fs::read_to_string(wrap_layout).unwrap();
+    check_comparisons(wrap_layout, &round_trip::<Proth120>(&text));
+    checked += 1;
     assert!(checked >= 31, "{checked}");
 }

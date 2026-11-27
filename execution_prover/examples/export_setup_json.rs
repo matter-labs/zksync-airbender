@@ -188,7 +188,7 @@ fn export_verifier_programs(
         std::fs::write(file.with_extension("text"), program.text_bytes())?;
         let config = match entry.descriptor.program {
             FsvProgram::UnrolledBaseLayer | FsvProgram::UnrolledRecursionLayer => "reduced",
-            FsvProgram::UnifiedBaseLayer | FsvProgram::UnifiedRecursionLayer => "unified",
+            FsvProgram::UnifiedRecursionLayer => "unified",
         };
         programs.push((name, config));
     }

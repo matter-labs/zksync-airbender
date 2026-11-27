@@ -16,7 +16,6 @@ path = "src/main.rs"
 [dependencies]
 proof_fixtures = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
-setups = { workspace = true }
 common_constants = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
@@ -29,7 +28,6 @@ field = { workspace = true }
 verifier_common = { workspace = true }
 
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }
-log = "0.4"
 
 env_logger = "0.11"
 base64 = "0.21.7"
