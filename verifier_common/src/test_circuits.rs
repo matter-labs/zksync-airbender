@@ -101,9 +101,8 @@ impl CircuitData {
         )
     }
 
-    /// A circuit outside the `gkr_circuits!` catalogue (its production
-    /// crate and `cs/compiled_circuits/<name>_layout*_gkr.json` artifacts
-    /// exist, but no standard per-level verifier is generated for it).
+    /// A circuit with a layout in its definition crate and no standard
+    /// per-level verifier in the `gkr_circuits!` catalogue.
     pub fn new(name: &'static str, production_path: &'static str) -> Self {
         Self {
             name,
@@ -175,28 +174,26 @@ impl CircuitData {
     }
 
     pub fn circuit_path(&self) -> String {
-        if self.name == "compression" {
-            return CircuitData::new("unified_reduced_machine", self.production_path)
-                .circuit_path();
-        }
-        if self.name == "unified_reduced_machine_2_22" {
-            return format!("{}/generated/layout.json", self.production_path);
-        }
-        if self.name == "inits_and_teardowns" {
-            format!(
-                "{}/cs/compiled_circuits/{}_layout_no_caches_gkr.json",
-                REPO_ROOT, self.name,
-            )
+        if self.name == "inits_and_teardowns"
+            || (cfg!(feature = "no_caches") && self.name != "unified_reduced_machine_2_22")
+        {
+            let stem = match self.name {
+                "compression" => "unified_reduced_machine",
+                name => name,
+            };
+            format!("{REPO_ROOT}/cs/compiled_circuits/{stem}_layout_no_caches_gkr.json")
         } else {
-            #[cfg(feature = "no_caches")]
-            let suffix = "_no_caches";
-            #[cfg(not(feature = "no_caches"))]
-            let suffix = "";
-            format!(
-                "{}/cs/compiled_circuits/{}_layout{}_gkr.json",
-                REPO_ROOT, self.name, suffix
-            )
+            self.production_layout_path()
         }
+    }
+
+    fn production_layout_path(&self) -> String {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(self.production_path)
+            .join("generated/layout.json")
+            .into_os_string()
+            .into_string()
+            .unwrap()
     }
 
     /// The verifier program's ELF in the default mode (built by
@@ -262,20 +259,20 @@ impl CircuitData {
     }
 
     pub fn compiled_circuit(&self) -> GKRCircuitArtifact<BabyBearField> {
-        let wip_layout: GKRCircuitArtifact<BabyBearField> =
-            deserialize_from_file(&self.circuit_path());
-        let prod_layout_path = format!("{}/generated/layout.json", self.production_path);
-        if let Ok(prod_layout) = try_deserialize_from_file(&prod_layout_path) {
-            assert!(
-                wip_layout == prod_layout,
-                "layouts differ in debug and production files, that may lead to subtle bugs: {} vs {}",
-                self.circuit_path(),
-                prod_layout_path,
-            );
-        } else {
-            println!("No production layout for circuit {}", self.name);
+        let path = self.circuit_path();
+        let layout = deserialize_from_file(&path);
+        let prod_layout_path = self.production_layout_path();
+        if path != prod_layout_path {
+            if let Ok(prod_layout) = try_deserialize_from_file(&prod_layout_path) {
+                assert!(
+                    layout == prod_layout,
+                    "layouts differ in debug and production files, that may lead to subtle bugs: {path} vs {prod_layout_path}",
+                );
+            } else {
+                println!("No production layout for circuit {}", self.name);
+            }
         }
-        wip_layout
+        layout
     }
 
     /// The fixture proof's ND stream for a verifier built with `blake`

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drift guard for the circuit JSONs the spec imports (human/ via import_clean).
 
-For every cs/compiled_circuits JSON named in lakefile.toml:
+For every cached or no-cache circuit layout named in lakefile.toml:
   - the bytes match the sha256 pinned in circuit_json_pins.json (an intended change
     means updating the pin in the same commit);
   - the JSON has no duplicate object keys (the Lean importer would otherwise keep one
@@ -28,7 +28,9 @@ PINS = ROOT / "circuit_json_pins.json"
 
 def imported_paths():
     text = (ROOT / "lakefile.toml").read_text()
-    names = sorted(set(re.findall(r'"((?:\.\./)+cs/compiled_circuits/[A-Za-z0-9_.-]+\.json)"', text)))
+    layout = (r'cs/compiled_circuits/[A-Za-z0-9_.-]+_layout_no_caches_gkr\.json'
+              r'|circuit_defs/(?:unrolled_circuits/)?[A-Za-z0-9_]+/generated/layout\.json')
+    names = sorted(set(re.findall(r'"(\.\./\.\./(?:' + layout + r'))"', text)))
     return [(ROOT / name).resolve() for name in names]
 
 
@@ -61,7 +63,7 @@ CIRCUIT_FORM = ("serde_json pretty, indent 2", {"indent": 2}, "indent=2")
 
 
 # The inits/teardowns circuit has no cached relations, so its cached and no-cache files have equal content.
-EQUAL_CIRCUITS = {frozenset({"cs/compiled_circuits/inits_and_teardowns_layout_gkr.json",
+EQUAL_CIRCUITS = {frozenset({"circuit_defs/unrolled_circuits/inits_and_teardowns/generated/layout.json",
                              "cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json"})}
 
 

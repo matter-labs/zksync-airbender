@@ -10,7 +10,7 @@ public import Human.Circuits.InitsTeardowns.Theorems
 
 namespace Airbender.InitsTeardowns.Native
 
-import_ram_products unifiedArtifact from "../../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json" unified_inline
+import_ram_products unifiedArtifact from "../../circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json" unified_inline
 
 /-- The cached unified capture is the circuit that production proves. Its initialization gates have the layout
     `InitsTeardowns.unifiedLayout`: the same sets and teardown columns, and each gate pairs the adjacent sets 2k and

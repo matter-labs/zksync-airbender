@@ -1680,11 +1680,13 @@ mod test {
 
     type F = BabyBearField;
     type E = BabyBearExt4;
+    const ADD_SUB_LAYOUT: &str =
+        "../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json";
 
     #[test]
     fn compare_gate_vs_batched_cost_in_circuit() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+            deserialize_from_file(ADD_SUB_LAYOUT)
         } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
@@ -1756,7 +1758,7 @@ mod test {
     #[test]
     fn analyze_bracket_expansion_duplication() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+            deserialize_from_file(ADD_SUB_LAYOUT)
         } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
@@ -1903,7 +1905,7 @@ mod test {
     #[test]
     fn analyze_terms_in_circuit() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+            deserialize_from_file(ADD_SUB_LAYOUT)
         } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
@@ -1926,7 +1928,7 @@ mod test {
     #[test]
     fn partition_quadratic_graph_in_circuit() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+            deserialize_from_file(ADD_SUB_LAYOUT)
         } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
@@ -1975,7 +1977,7 @@ mod test {
     #[test]
     fn optimize_quadratic_evaluation_in_circuit() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+            deserialize_from_file(ADD_SUB_LAYOUT)
         } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
@@ -2030,7 +2032,7 @@ mod test {
     #[test]
     fn optimize_quadratic_evaluation_partitioned_in_circuit() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+            deserialize_from_file(ADD_SUB_LAYOUT)
         } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
@@ -2109,7 +2111,7 @@ mod test {
     #[test]
     fn sweep_scratch_vs_rereads() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+            deserialize_from_file(ADD_SUB_LAYOUT)
         } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",

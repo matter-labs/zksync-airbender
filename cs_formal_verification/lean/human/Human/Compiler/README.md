@@ -3,7 +3,7 @@
 [Capture.lean](Capture.lean) defines a cached circuit and its public profile.
 The [ADD/SUB capture](Captures/AddSub.lean) and the other family modules import
 14 cached production layouts with the [proved circuit parser](../Import/Transcribe.lean).
-Each import reads its pinned file in `cs/compiled_circuits/`.
+Each import reads its pinned layout from the owning circuit crate.
 Large gate, cache and placement arrays retain shared literal declarations.
 
 Each capture states description equality, arithmetic preservation and an arithmetic

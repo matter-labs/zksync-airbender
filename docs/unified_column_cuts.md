@@ -36,7 +36,7 @@ root.
 | Scratch width, setup width, higher layers | 41, 10, unchanged | 41, 10, unchanged |
 
 The widths and the first layer's gate count are those of the committed layouts
-`cs/compiled_circuits/unified_reduced_machine_layout_gkr.json` and
+`circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json` and
 `circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json`
 (`memory_layout.total_width`, `witness_layout.total_width`, `layers[0].gates`), against the
 same files before the column cuts.
@@ -335,19 +335,14 @@ two observed proof classes.
 Release builds; `RUST_MIN_STACK=1073741824`:
 
 ```sh
-# the cs layouts and SSA graphs
-cargo test -p cs --release --lib -- --exact \
-  gkr_circuits::unified_reduced_machine::circuit::test::compile_unified_reduced_machine_into_gkr \
-  gkr_circuits::unified_reduced_machine::circuit::test::compile_unified_reduced_machine_into_no_caches_gkr \
-  gkr_circuits::unified_reduced_machine::circuit::test::compile_unified_reduced_machine_gkr_witness_graph \
-  gkr_circuits::unified_reduced_machine::circuit::test::compile_unified_reduced_machine_gkr_witness_graph_large_field \
-  --test-threads=1
-# generated Rust witness functions, circuit-crate artifacts, CUDA witness, forward schedule, verifiers
+# Cached layouts, SSAs, and Rust witness functions from the circuit crates.
+cargo test -p unified_reduced_machine -p unified_reduced_machine_proth120_2_21 --release --lib test::generate -- --exact
+# The separate no-cache layout and the prover's generated witness functions.
+cargo test -p cs --release --lib compile_unified_reduced_machine_into_no_caches_gkr
 cargo test -p witness_eval_generator --release --lib -- --exact derive_from_ssa::test::gen_for_gkr --test-threads=1
-cargo test -p unified_reduced_machine --release --lib test::generate -- --exact
-cargo test -p unified_reduced_machine_proth120_2_21 --release --lib test::generate -- --exact
-cargo run --release -p gpu_witness_eval_generator --bin generate -- cs/compiled_circuits/unified_reduced_machine_layout_gkr.json cs/compiled_circuits/unified_reduced_machine_ssa_gkr.json circuit_defs/unrolled_circuits/unified_reduced_machine/generated/witness_generation_fn.cuh
-cargo run --release -p gpu_gkr_compiler --features search --bin gkr-forward-artifact -- --if-stale --circuit unified_reduced_machine --layout cs/compiled_circuits/unified_reduced_machine_layout_gkr.json --output cs/compiled_circuits/unified_reduced_machine_schedule_b4_gkr.json --seed 42 --cache-buckets 4 --population 64 --evaluations 1024
+# CUDA witness, forward schedule, and verifiers.
+cargo run --release -p gpu_witness_eval_generator --bin generate -- circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json circuit_defs/unrolled_circuits/unified_reduced_machine/generated/ssa.json circuit_defs/unrolled_circuits/unified_reduced_machine/generated/witness_generation_fn.cuh
+cargo run --release -p gpu_gkr_compiler --features search --bin gkr-forward-artifact -- --if-stale --circuit unified_reduced_machine --layout circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json --output cs/compiled_circuits/unified_reduced_machine_schedule_b4_gkr.json --seed 42 --cache-buckets 4 --population 64 --evaluations 1024
 cargo test -p verifier_generator --no-default-features --test generate_verifiers -- --exact unified_reduced_machine unified_reduced_machine_compression_final --test-threads=1
 # the gate, slot, decoder and forgery checks
 cargo test -p cs --release --lib unified_reduced_machine::circuit::test::gates_match_their_flag_semantics_on_admitted_rows

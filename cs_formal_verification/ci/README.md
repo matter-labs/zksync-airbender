@@ -2,7 +2,7 @@
 
 `.github/workflows/lean-formal-verification.yml` runs `verify.sh` (build, regressions, axiom audits, the module
 budget, review check) when `cs_formal_verification/` or a circuit JSON the spec imports or the tests read
-(`cs/compiled_circuits/*_gkr.json`) changes, nightly, and on manual dispatch. It is a separate workflow: the
+(under `cs/compiled_circuits/` and `circuit_defs/`) changes, nightly, and on manual dispatch. It is a separate workflow: the
 `Rust CI` jobs and the `pr-checks` gate are unchanged. What each mode re-checks:
 [TRUST_AND_REVIEW](../docs/TRUST_AND_REVIEW.md#what-ci-re-checks).
 
@@ -142,6 +142,6 @@ x86 runner.
 Native reference (M3 Max, artifact cache off, before the warm-run changes above): PR 555 / 465 / 435 s at 4 / 8 / 12
 threads, no-op 100 s.
 
-The kernel sandbox exposes `cs/compiled_circuits/` through a read-only bind.
-`kernel-bwrap.sh` adds this data path after Lake covers the host home paths.
+The kernel sandbox exposes `cs/compiled_circuits/` and `circuit_defs/` through read-only binds.
+`kernel-bwrap.sh` adds these paths after Lake covers the host home paths.
 The probe checks input visibility and the read-only mount before the proof build.

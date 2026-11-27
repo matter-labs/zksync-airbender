@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 from generate_worker_selectors import selectors, address_key
 from generate_worker_constraints import operand, source_expression, fields_theorem, cons_proof
-from check_compiler_captures import FAMILIES
+from check_compiler_captures import FAMILIES, cached_layout
 
 ROOT = Path(__file__).resolve().parents[1]
 FAMILIES_CPU = {
@@ -29,7 +29,7 @@ set_option maxRecDepth 32768
 def generate(name):
     from generate_worker_constraints import address
     key,family,row_family=FAMILIES_CPU[name]
-    circuit=json.loads((ROOT.parent.parent/'cs/compiled_circuits'/f'{FAMILIES[key]}_layout_gkr.json').read_text())
+    circuit=json.loads(cached_layout(FAMILIES[key]).read_text())
     native=selectors(circuit)
     reverse={address_key(a):int(i) for i,a in circuit['placement_data'].items()}
     positions={int(i):position for position,i in enumerate(sorted(circuit['placement_data'],key=int))}

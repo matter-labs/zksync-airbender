@@ -5,14 +5,11 @@ use field::{baby_bear::base::BabyBearField as F, Field};
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 use worker::Worker;
 
-// Keep the real cached/no-cache decoder shapes, but use a small public program
-// and setup domain for the export roundtrip test. No artifact is
-// regenerated or written by the tests.
-fn artifact(cached: bool, tagged: bool, trace_len: usize) -> GKRCircuitArtifact<F> {
-    let suffix = if cached { "" } else { "_no_caches" };
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
-        "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout{suffix}_gkr.json"
-    ));
+// Use the no-cache decoder shape with a small public program and setup domain
+// for the export roundtrip test.
+fn artifact(tagged: bool, trace_len: usize) -> GKRCircuitArtifact<F> {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json");
     let mut circuit: GKRCircuitArtifact<F> =
         serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
     assert!(circuit.has_decoder_lookup);
@@ -33,7 +30,7 @@ fn artifact(cached: bool, tagged: bool, trace_len: usize) -> GKRCircuitArtifact<
 fn setup_json_roundtrip_preserves_materialized_columns_and_program() {
     use crate::gkr::prover::setup_artifact::{ColumnBlock, SetupArtifact, SetupProgram};
     let trace_len = 1 << 19;
-    let mut circuit = artifact(false, true, trace_len);
+    let mut circuit = artifact(true, trace_len);
     let mut driver = TableDriver::<F>::new();
     driver.materialize_table::<9>(TableType::ZeroEntry);
     driver.materialize_table::<9>(TableType::RangeCheck13);

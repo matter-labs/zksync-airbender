@@ -16,9 +16,8 @@ use worker::Worker;
 
 #[test]
 fn bigint_eq_result_is_bound_to_the_equality_flag() {
-    let circuit: GKRCircuitArtifact<F> = deserialize_from_file(
-        "../cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
-    );
+    let circuit: GKRCircuitArtifact<F> =
+        deserialize_from_file("../circuit_defs/bigint_with_control/generated/layout.json");
     let mut row = BigintDelegationWitness::empty();
     row.write_timestamp = (1 << 24) + DELEGATION_INVOCATION_OFFSET;
     let ptr = ROM_BYTE_SIZE as u32;

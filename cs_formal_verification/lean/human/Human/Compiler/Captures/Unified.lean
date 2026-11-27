@@ -9,7 +9,7 @@ public import Human.Circuits.UnifiedReduced.Artifact
 
 namespace Airbender.Compiler.Captures.Unified
 
-import_circuit importedCircuit from "../../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json" shared imported
+import_circuit importedCircuit from "../../circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json" shared imported
 
 noncomputable def imported : NativeCapture := {
   cached := true, circuit := importedCircuit, family := "unified", format_version := 1 }

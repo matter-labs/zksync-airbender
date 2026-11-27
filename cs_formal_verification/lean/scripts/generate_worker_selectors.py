@@ -3,7 +3,7 @@
 import argparse
 import json
 from pathlib import Path
-from check_compiler_captures import FAMILIES
+from check_compiler_captures import FAMILIES, cached_layout
 
 ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {"GenericLookup": 0, "Lookup16Bits": 1, "LookupTimestamps": 2}
@@ -160,7 +160,7 @@ def main():
     mode.add_argument("--write", action="store_true")
     args = parser.parse_args()
     for name, family in WORKERS.items():
-        path = ROOT.parent.parent / "cs/compiled_circuits" / (FAMILIES[family] + "_layout_gkr.json")
+        path = cached_layout(FAMILIES[family])
         entries = selectors(json.loads(path.read_text()))
         terms = [f'⟨{row["group"]}, {row["locator"][0]}, {row["locator"][1]}, {row["expansion"]}⟩'
                  for row in entries]

@@ -9,7 +9,7 @@ public import Human.Circuits.AddSub.Artifact
 
 namespace Airbender.Compiler.Captures.AddSub
 
-import_circuit importedCircuit from "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json" shared imported
+import_circuit importedCircuit from "../../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json" shared imported
 
 noncomputable def imported : NativeCapture := {
   cached := true, circuit := importedCircuit, family := "add-sub", format_version := 1 }

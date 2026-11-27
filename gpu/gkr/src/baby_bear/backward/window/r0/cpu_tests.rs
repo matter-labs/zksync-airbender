@@ -12,23 +12,23 @@ use crate::{
 };
 
 const CORPUS: &[&str] = &[
-    "add_sub_lui_auipc_mop_layout_gkr.json",
-    "bigint_with_extended_control_layout_gkr.json",
-    "blake2_g_function_layout_gkr.json",
-    "blake2_with_extended_control_layout_gkr.json",
-    "inits_and_teardowns_layout_gkr.json",
-    "jump_branch_slt_layout_gkr.json",
-    "keccak_special5_layout_gkr.json",
-    "mem_subword_only_layout_gkr.json",
-    "mem_word_only_layout_gkr.json",
-    "shift_binop_layout_gkr.json",
-    "unified_reduced_machine_layout_gkr.json",
-    "unsigned_mul_div_layout_gkr.json",
+    "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json",
+    "circuit_defs/bigint_with_control/generated/layout.json",
+    "circuit_defs/blake2_g_function/generated/layout.json",
+    "circuit_defs/blake2_with_compression/generated/layout.json",
+    "circuit_defs/unrolled_circuits/inits_and_teardowns/generated/layout.json",
+    "circuit_defs/unrolled_circuits/jump_branch_slt/generated/layout.json",
+    "circuit_defs/keccak_special5/generated/layout.json",
+    "circuit_defs/unrolled_circuits/load_store_subword_only/generated/layout.json",
+    "circuit_defs/unrolled_circuits/load_store_word_only/generated/layout.json",
+    "circuit_defs/unrolled_circuits/shift_binary/generated/layout.json",
+    "circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json",
+    "circuit_defs/unrolled_circuits/mul_div_unsigned/generated/layout.json",
 ];
 
 #[test]
 fn cpu_selected_r0_programs_and_banks_cover_corpus() {
-    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut layers = 0;
     let mut expected_layers = 0;
     let mut families = [0; 3];

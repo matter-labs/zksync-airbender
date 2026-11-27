@@ -322,7 +322,7 @@ mod tests {
 
     fn compile_embedded(layout: &str, circuit_type: CircuitType) -> GkrPrograms {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../cs/compiled_circuits")
+            .join("../..")
             .join(layout);
         let artifact: GKRCircuitArtifact<BF> =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
@@ -333,11 +333,11 @@ mod tests {
     #[test]
     fn cpu_unified22_programs_compile() {
         let unified = compile_embedded(
-            "unified_reduced_machine_layout_gkr.json",
+            "circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json",
             CircuitType::Unrolled(UnrolledCircuitType::Unified),
         );
         let unified22 = compile_embedded(
-            "../../circuit_defs/unrolled_circuits/unified_reduced_machine_2_22/generated/layout.json",
+            "circuit_defs/unrolled_circuits/unified_reduced_machine_2_22/generated/layout.json",
             CircuitType::Unrolled(UnrolledCircuitType::Unified22),
         );
         assert_eq!(unified22.runtime_circuit().trace_len, 1 << 22);

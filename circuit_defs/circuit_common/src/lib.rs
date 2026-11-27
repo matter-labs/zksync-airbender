@@ -418,6 +418,7 @@ pub fn save_artifacts(
 
     use std::io::Write;
     serialize_to_file(&compiled_circuit, "generated/layout.json");
+    serialize_to_file(&ssa, "generated/ssa.json");
     save_prover_configs(&compiled_circuit, geometry);
 
     let full_stream = witness_eval_generator::derive_from_ssa::derive_from_gkr_ssa(

@@ -176,7 +176,7 @@ step_kernel_probe() {
 #     leanchecker over our module prefixes.
 # lake check's sandbox clears the environment (LAKE_NO_CACHE does not reach it) and can write only lean/.lake: build
 # first (step_build), so Clean is already built from source and sail-rv32/.lake and lean-sail/.lake are up to date.
-# kernel-bwrap.sh binds the external cs/compiled_circuits inputs read-only after Lake covers the host home paths.
+# kernel-bwrap.sh binds the external circuit layouts read-only after Lake covers the host home paths.
 # The kernel_replay job runs on the runner host (no container: Docker's default profiles deny bwrap the user and mount
 # namespaces it needs) and sets KERNEL_CHECKER from kernel-probe; backup-check.sh sets lake.
 # The `paranoid` value selects this required check. kernel-external runs the four external checkers;

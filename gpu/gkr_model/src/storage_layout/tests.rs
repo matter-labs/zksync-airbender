@@ -6,14 +6,17 @@ use field::{baby_bear::base::BabyBearField, Field};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-fn compiled_circuit_dir() -> PathBuf {
-    // `CARGO_MANIFEST_DIR` is `gpu/gkr_model`; the fixtures live at the
-    // workspace-root `cs/compiled_circuits` (two levels up), not `gpu/cs`.
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("cs")
-        .join("compiled_circuits")
+fn layout_path(stem: &str, circuit_crate: &str, cached: bool) -> PathBuf {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    if cached {
+        root.join(format!(
+            "circuit_defs/{circuit_crate}/generated/layout.json"
+        ))
+    } else {
+        root.join(format!(
+            "cs/compiled_circuits/{stem}_layout_no_caches_gkr.json"
+        ))
+    }
 }
 
 fn load_artifact(json_path: &PathBuf) -> Option<GKRCircuitArtifact<BabyBearField>> {
@@ -21,22 +24,34 @@ fn load_artifact(json_path: &PathBuf) -> Option<GKRCircuitArtifact<BabyBearField
     serde_json::from_slice(&bytes).ok()
 }
 
-const CIRCUIT_BASENAMES: &[&str] = &[
-    "add_sub_lui_auipc_mop",
-    "bigint_with_extended_control",
-    "blake2_g_function",
-    "blake2_with_extended_control",
-    "inits_and_teardowns",
-    "jump_branch_slt",
-    "keccak_special5",
-    "mem_subword_only",
-    "mem_word_only",
-    "shift_binop",
-    "unsigned_mul_div",
+const CIRCUITS: &[(&str, &str)] = &[
+    (
+        "add_sub_lui_auipc_mop",
+        "unrolled_circuits/add_sub_lui_auipc_mop",
+    ),
+    ("bigint_with_extended_control", "bigint_with_control"),
+    ("blake2_g_function", "blake2_g_function"),
+    ("blake2_with_extended_control", "blake2_with_compression"),
+    (
+        "inits_and_teardowns",
+        "unrolled_circuits/inits_and_teardowns",
+    ),
+    ("jump_branch_slt", "unrolled_circuits/jump_branch_slt"),
+    ("keccak_special5", "keccak_special5"),
+    (
+        "mem_subword_only",
+        "unrolled_circuits/load_store_subword_only",
+    ),
+    ("mem_word_only", "unrolled_circuits/load_store_word_only"),
+    ("shift_binop", "unrolled_circuits/shift_binary"),
+    ("unsigned_mul_div", "unrolled_circuits/mul_div_unsigned"),
     // The unified reduced-machine circuit carries a scratch-backed
     // `LookupUnbalancedPairWithMaterializedBaseInputs.remainder`, which is the
     // regression covered by `normalize_leaves_no_scratch_mapped_inner_layer_reads`.
-    "unified_reduced_machine",
+    (
+        "unified_reduced_machine",
+        "unrolled_circuits/unified_reduced_machine",
+    ),
 ];
 
 /// Every `GKRAddress` produced by
@@ -47,16 +62,10 @@ const CIRCUIT_BASENAMES: &[&str] = &[
 /// `ThisLayerInnerLayerWrite` (since `addr.layer == output_layer`).
 #[test]
 fn tower_layout_covers_dim_reducing_outputs() {
-    let dir = compiled_circuit_dir();
     let mut covered = 0;
-    for basename in CIRCUIT_BASENAMES {
+    for &(basename, circuit_crate) in CIRCUITS {
         for cached in [true, false] {
-            let suffix = if cached {
-                "_layout_gkr.json"
-            } else {
-                "_layout_no_caches_gkr.json"
-            };
-            let path = dir.join(format!("{basename}{suffix}"));
+            let path = layout_path(basename, circuit_crate, cached);
             let Some(artifact) = load_artifact(&path) else {
                 continue;
             };
@@ -131,21 +140,15 @@ fn tower_layout_covers_dim_reducing_outputs() {
             }
         }
     }
-    assert!(covered >= CIRCUIT_BASENAMES.len());
+    assert!(covered >= CIRCUITS.len());
 }
 
 #[test]
 fn layout_matches_audit_for_all_circuits() {
-    let dir = compiled_circuit_dir();
     let mut covered = 0;
-    for basename in CIRCUIT_BASENAMES {
+    for &(basename, circuit_crate) in CIRCUITS {
         for cached in [true, false] {
-            let suffix = if cached {
-                "_layout_gkr.json"
-            } else {
-                "_layout_no_caches_gkr.json"
-            };
-            let path = dir.join(format!("{basename}{suffix}"));
+            let path = layout_path(basename, circuit_crate, cached);
             let Some(artifact) = load_artifact(&path) else {
                 continue;
             };
@@ -188,7 +191,7 @@ fn layout_matches_audit_for_all_circuits() {
         }
     }
     assert!(
-        covered >= CIRCUIT_BASENAMES.len(),
+        covered >= CIRCUITS.len(),
         "expected at least one mode per basename to load; covered={covered}"
     );
 }
@@ -197,12 +200,11 @@ fn layout_matches_audit_for_all_circuits() {
 fn cached_artifacts_use_only_gpu_forward_supported_variants() {
     use cs::gkr_compiler::GKRRelation as R;
 
-    let dir = compiled_circuit_dir();
     let mut covered = 0;
-    for basename in CIRCUIT_BASENAMES {
+    for &(basename, circuit_crate) in CIRCUITS {
         // Production GPU programs consume cached artifacts. No-cache artifacts
         // also contain relations that the GPU evaluation IR does not lower.
-        let path = dir.join(format!("{basename}_layout_gkr.json"));
+        let path = layout_path(basename, circuit_crate, true);
         let Some(artifact) = load_artifact(&path) else {
             continue;
         };
@@ -265,11 +267,10 @@ fn cached_artifacts_use_only_gpu_forward_supported_variants() {
 /// Normalization must rewrite every read of a scratch-mapped inner-layer address.
 #[test]
 fn normalize_leaves_no_scratch_mapped_inner_layer_reads() {
-    let dir = compiled_circuit_dir();
     let mut covered = 0;
-    for basename in CIRCUIT_BASENAMES {
-        for suffix in ["_layout_gkr.json", "_layout_no_caches_gkr.json"] {
-            let path = dir.join(format!("{basename}{suffix}"));
+    for &(basename, circuit_crate) in CIRCUITS {
+        for cached in [true, false] {
+            let path = layout_path(basename, circuit_crate, cached);
             let Some(artifact) = load_artifact(&path) else {
                 continue;
             };
@@ -296,7 +297,7 @@ fn normalize_leaves_no_scratch_mapped_inner_layer_reads() {
                     for addr in reads.iter().chain(writes.iter()) {
                         assert!(
                             !scratch_keys.contains(addr),
-                            "{basename}{suffix} layer {layer_idx}: gate {:?} still references \
+                            "{basename}/{cached} layer {layer_idx}: gate {:?} still references \
                              scratch-mapped {addr:?} after normalize; its writer was rewritten to \
                              ScratchSpace so the layout has no InnerLayer slot for it. Add this \
                              relation to rewrite_relation_scratch_addresses.",
@@ -347,7 +348,11 @@ fn normalize_max_quadratic_rewrites_scratch_addresses_and_preserves_expression()
 
     type F = BabyBearField;
 
-    let fixture = compiled_circuit_dir().join("mem_subword_only_layout_gkr.json");
+    let fixture = layout_path(
+        "mem_subword_only",
+        "unrolled_circuits/load_store_subword_only",
+        true,
+    );
     let bytes = std::fs::read(&fixture).expect("committed GKR fixture must be readable");
     let mut artifact: GKRCircuitArtifact<F> =
         serde_json::from_slice(&bytes).expect("fixture must deserialize for BabyBear");

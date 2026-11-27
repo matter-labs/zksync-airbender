@@ -410,8 +410,25 @@ run_prover_cargo() {
 # Step functions
 # ============================================================================
 step_circuits() {
+  local circuit_crates=(
+    add_sub_lui_auipc_mop bigint_with_control blake2_g_function blake2_with_compression
+    inits_and_teardowns jump_branch_slt keccak_chi5 keccak_column_parity keccak_special5
+    keccak_theta_rho load_store_subword_only load_store_word_only mul_div_unsigned shift_binary
+    unified_reduced_machine unified_reduced_machine_2_22
+    unified_reduced_machine_proth120_2_21 unified_reduced_machine_proth120_2_22
+  )
+  local package_args=() crate
+  for crate in "${circuit_crates[@]}"; do
+    package_args+=(-p "$crate")
+  done
+
   run_step "Compile GKR circuits" \
-    in_dir cs env RUSTFLAGS="$WARN_FLAGS" cargo test -p cs -- gkr
+    env RUSTFLAGS="$WARN_FLAGS" cargo test "${package_args[@]}" --profile cli --lib \
+      test::generate -- --exact
+  run_step "Compile no-cache GKR layouts" \
+    env RUSTFLAGS="$WARN_FLAGS" cargo test -p cs --profile cli --lib _into_no_caches_gkr
+  run_step "Check GKR circuits" \
+    env RUSTFLAGS="$WARN_FLAGS" cargo test -p cs --profile cli --lib gkr -- --skip _into_no_caches_gkr
 }
 
 step_witness_gen() {

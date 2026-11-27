@@ -317,46 +317,26 @@ mod tests {
     use super::*;
     use crate::backward::compile_continuations;
 
-    const CORPUS: &[&str] = &[
-        "add_sub_lui_auipc_mop_layout_gkr.json",
-        "bigint_with_extended_control_layout_gkr.json",
-        "blake2_g_function_layout_gkr.json",
-        "blake2_with_extended_control_layout_gkr.json",
-        "inits_and_teardowns_layout_gkr.json",
-        "jump_branch_slt_layout_gkr.json",
-        "keccak_special5_layout_gkr.json",
-        "mem_subword_only_layout_gkr.json",
-        "mem_word_only_layout_gkr.json",
-        "shift_binop_layout_gkr.json",
-        "unified_reduced_machine_layout_gkr.json",
-        "unsigned_mul_div_layout_gkr.json",
-    ];
-
     static COMPILED_CORPUS: OnceLock<Vec<(String, ContinuationLayerProgram)>> = OnceLock::new();
 
     fn compiled_corpus() -> &'static [(String, ContinuationLayerProgram)] {
         COMPILED_CORPUS.get_or_init(|| {
-            let directory =
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+            let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
             let mut coordinates = Vec::new();
-            for layout_name in CORPUS {
+            for layout_path in crate::backward::corpus_tests::CORPUS {
                 let artifact: GKRCircuitArtifact<BabyBearField> =
-                    serde_json::from_slice(&std::fs::read(directory.join(layout_name)).unwrap())
+                    serde_json::from_slice(&std::fs::read(directory.join(layout_path)).unwrap())
                         .unwrap();
                 let dag =
-                    lower_dag(&artifact).unwrap_or_else(|error| panic!("{layout_name}: {error}"));
+                    lower_dag(&artifact).unwrap_or_else(|error| panic!("{layout_path}: {error}"));
                 let bundle = compile_continuations(&dag)
-                    .unwrap_or_else(|error| panic!("{layout_name}: {error:?}"));
-                coordinates.extend(bundle.layers.into_iter().map(|program| {
-                    (
-                        format!(
-                            "{}:{}",
-                            layout_name.trim_end_matches("_layout_gkr.json"),
-                            program.layer
-                        ),
-                        program,
-                    )
-                }));
+                    .unwrap_or_else(|error| panic!("{layout_path}: {error:?}"));
+                coordinates.extend(
+                    bundle
+                        .layers
+                        .into_iter()
+                        .map(|program| (format!("{layout_path}:{}", program.layer), program)),
+                );
             }
             coordinates
         })

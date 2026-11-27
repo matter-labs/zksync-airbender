@@ -378,7 +378,7 @@ pub fn proof_suffix(level: crate::definitions::SecurityLevel) -> String {
 }
 
 /// The circuit-definition crate of a proof stem (relative to `prover/`).
-fn circuit_definition_dir(stem: &str) -> &'static str {
+pub(super) fn circuit_definition_dir(stem: &str) -> &'static str {
     match stem {
         "add_sub_lui_auipc_mop" => "../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
         "bigint_with_extended_control" => "../circuit_defs/bigint_with_control",

@@ -119,7 +119,7 @@ fn regular_witness_satisfies(label: &str, layout: &str) {
 fn generated_witness_satisfies_regular_layout() {
     regular_witness_satisfies(
         "regular 2^23 smoke",
-        "../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json",
+        "../circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json",
     );
 }
 

@@ -9,7 +9,7 @@ public import Human.Circuits.Blake2Round.Artifact
 
 namespace Airbender.Compiler.Captures.BlakeRound
 
-import_circuit importedCircuit from "../../cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json" shared imported
+import_circuit importedCircuit from "../../circuit_defs/blake2_with_compression/generated/layout.json" shared imported
 
 noncomputable def imported : NativeCapture := {
   cached := true, circuit := importedCircuit, family := "blake-round", format_version := 1 }

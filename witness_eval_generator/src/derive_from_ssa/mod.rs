@@ -487,30 +487,36 @@ mod test {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
-        for prefix in [
-            "add_sub_lui_auipc_mop",
-            "bigint_with_extended_control",
-            "blake2_g_function",
-            "blake2_with_extended_control",
-            "jump_branch_slt",
-            "keccak_chi5",
-            "keccak_column_parity",
-            "keccak_special5",
-            "keccak_theta_rho",
-            "mem_subword_only",
-            "mem_word_only",
-            "shift_binop",
-            "unified_reduced_machine",
-            "unsigned_mul_div",
+        for (prefix, circuit_crate) in [
+            (
+                "add_sub_lui_auipc_mop",
+                "unrolled_circuits/add_sub_lui_auipc_mop",
+            ),
+            ("bigint_with_extended_control", "bigint_with_control"),
+            ("blake2_g_function", "blake2_g_function"),
+            ("blake2_with_extended_control", "blake2_with_compression"),
+            ("jump_branch_slt", "unrolled_circuits/jump_branch_slt"),
+            ("keccak_chi5", "keccak_chi5"),
+            ("keccak_column_parity", "keccak_column_parity"),
+            ("keccak_special5", "keccak_special5"),
+            ("keccak_theta_rho", "keccak_theta_rho"),
+            (
+                "mem_subword_only",
+                "unrolled_circuits/load_store_subword_only",
+            ),
+            ("mem_word_only", "unrolled_circuits/load_store_word_only"),
+            ("shift_binop", "unrolled_circuits/shift_binary"),
+            (
+                "unified_reduced_machine",
+                "unrolled_circuits/unified_reduced_machine",
+            ),
+            ("unsigned_mul_div", "unrolled_circuits/mul_div_unsigned"),
         ] {
-            // let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
-            //     &format!("../cs/compiled_circuits/{}_layout_no_caches_gkr.json", prefix),
-            // );
-            let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
-                &format!("../cs/compiled_circuits/{}_layout_gkr.json", prefix),
-            );
+            let inputs = format!("../circuit_defs/{circuit_crate}/generated");
+            let compiled_circuit: GKRCircuitArtifact<BabyBearField> =
+                deserialize_from_file(&format!("{inputs}/layout.json"));
             let compiled_graph: Vec<Vec<RawExpression<BabyBearField>>> =
-                deserialize_from_file(&format!("../cs/compiled_circuits/{}_ssa_gkr.json", prefix));
+                deserialize_from_file(&format!("{inputs}/ssa.json"));
             let full_stream =
                 derive_from_gkr_ssa(&compiled_graph, &compiled_circuit, false, "BabyBearField");
 
@@ -518,13 +524,6 @@ mod test {
                 &format!("../prover/compiled_circuits/{}_generated_gkr.rs", prefix),
                 &full_stream,
             );
-            // std::fs::File::create(&format!(
-            //     "../prover/compiled_circuits/{}_generated_gkr.rs",
-            //     prefix
-            // ))
-            // .unwrap()
-            // .write_all(&full_stream.to_string().as_bytes())
-            // .unwrap();
         }
     }
 

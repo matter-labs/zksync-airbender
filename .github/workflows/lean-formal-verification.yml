@@ -73,9 +73,10 @@ jobs:
               if (files.length >= 300) files = undefined;
             }
             const native = /(?:\.rs$|(?:^|\/)Cargo\.[^/]+$|^rust-toolchain(?:\.toml)?$)|^(?:cs\/|cs_formal_verification\/lean\/|tools\/gkr_verifier\/|\.github\/workflows\/(?:ci|lean-formal-verification)\.yml$)/;
+            const circuitArtifact = /^circuit_defs\/(?:[^/]+\/)+generated\/(?:layout|ssa)\.json$/;
             const relevant = /^(cs_formal_verification\/|cs\/compiled_circuits\/|\.github\/(workflows\/(?:ci|lean-formal-verification)\.yml|actions\/lean-fv-setup\/))/;
-            core.setOutput('relevant', !files || files.some(f => relevant.test(f.filename) || native.test(f.filename)));
-            core.setOutput('native', !files || files.some(f => native.test(f.filename)));
+            core.setOutput('relevant', !files || files.some(f => relevant.test(f.filename) || native.test(f.filename) || circuitArtifact.test(f.filename)));
+            core.setOutput('native', !files || files.some(f => native.test(f.filename) || circuitArtifact.test(f.filename)));
 
   lean_verify:
     name: lean_verify

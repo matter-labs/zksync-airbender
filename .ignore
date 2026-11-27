@@ -15,7 +15,7 @@
 # Note: `target/` is intentionally omitted — it is covered by .gitignore,
 # which ripgrep honors by default.
 
-# --- Generated source (Rust + CUDA) ---
+# --- Generated circuit artifacts (Rust, CUDA, layout and SSA JSON) ---
 generated/
 compiled_circuits/
 
@@ -24,11 +24,9 @@ prover/test_proofs/
 fixtures/circuits/
 fixtures/chains/
 *_gkr_proof.json
-*_layout_gkr.json
 *_layout_no_caches_gkr.json
 *_preprocessed_layout_gkr.json
 *_preprocessed_layout_no_caches_gkr.json
-*_ssa_gkr.json
 *_witness
 *.vk.json
 

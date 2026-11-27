@@ -13,35 +13,65 @@ use gpu_gkr_compiler::{
 
 const CORPUS: &[(&str, &str)] = &[
     (
-        "add_sub_lui_auipc_mop_layout_gkr.json",
+        "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json",
         "add_sub_lui_auipc_mop",
     ),
     (
-        "bigint_with_extended_control_layout_gkr.json",
+        "circuit_defs/bigint_with_control/generated/layout.json",
         "bigint_with_extended_control",
     ),
-    ("blake2_g_function_layout_gkr.json", "blake2_g_function"),
     (
-        "blake2_with_extended_control_layout_gkr.json",
+        "circuit_defs/blake2_g_function/generated/layout.json",
+        "blake2_g_function",
+    ),
+    (
+        "circuit_defs/blake2_with_compression/generated/layout.json",
         "blake2_with_extended_control",
     ),
-    ("inits_and_teardowns_layout_gkr.json", "inits_and_teardowns"),
-    ("jump_branch_slt_layout_gkr.json", "jump_branch_slt"),
-    ("keccak_chi5_layout_gkr.json", "keccak_chi5"),
     (
-        "keccak_column_parity_layout_gkr.json",
+        "circuit_defs/unrolled_circuits/inits_and_teardowns/generated/layout.json",
+        "inits_and_teardowns",
+    ),
+    (
+        "circuit_defs/unrolled_circuits/jump_branch_slt/generated/layout.json",
+        "jump_branch_slt",
+    ),
+    (
+        "circuit_defs/keccak_chi5/generated/layout.json",
+        "keccak_chi5",
+    ),
+    (
+        "circuit_defs/keccak_column_parity/generated/layout.json",
         "keccak_column_parity",
     ),
-    ("keccak_special5_layout_gkr.json", "keccak_special5"),
-    ("keccak_theta_rho_layout_gkr.json", "keccak_theta_rho"),
-    ("mem_subword_only_layout_gkr.json", "mem_subword_only"),
-    ("mem_word_only_layout_gkr.json", "mem_word_only"),
-    ("shift_binop_layout_gkr.json", "shift_binop"),
     (
-        "unified_reduced_machine_layout_gkr.json",
+        "circuit_defs/keccak_special5/generated/layout.json",
+        "keccak_special5",
+    ),
+    (
+        "circuit_defs/keccak_theta_rho/generated/layout.json",
+        "keccak_theta_rho",
+    ),
+    (
+        "circuit_defs/unrolled_circuits/load_store_subword_only/generated/layout.json",
+        "mem_subword_only",
+    ),
+    (
+        "circuit_defs/unrolled_circuits/load_store_word_only/generated/layout.json",
+        "mem_word_only",
+    ),
+    (
+        "circuit_defs/unrolled_circuits/shift_binary/generated/layout.json",
+        "shift_binop",
+    ),
+    (
+        "circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json",
         "unified_reduced_machine",
     ),
-    ("unsigned_mul_div_layout_gkr.json", "unsigned_mul_div"),
+    (
+        "circuit_defs/unrolled_circuits/mul_div_unsigned/generated/layout.json",
+        "unsigned_mul_div",
+    ),
 ];
 
 const PROTH120_CORPUS: &[(&str, &str, usize)] = &[(
@@ -128,9 +158,10 @@ fn proth120_retained_forward_artifacts_compile_and_encode() {
 
 #[test]
 fn every_retained_forward_artifact_validates_compiles_and_encodes() {
-    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let directory = root.join("cs/compiled_circuits");
     for &(layout_name, stem) in CORPUS {
-        let layout_bytes = std::fs::read(directory.join(layout_name)).unwrap();
+        let layout_bytes = std::fs::read(root.join(layout_name)).unwrap();
         let layout: GKRCircuitArtifact<BabyBearField> =
             serde_json::from_slice(&layout_bytes).unwrap();
         let dag = lower_dag(&layout).unwrap_or_else(|error| panic!("{stem}: {error}"));
@@ -149,19 +180,21 @@ fn every_retained_forward_artifact_validates_compiles_and_encodes() {
 
 #[test]
 fn unified_2_22_layout_reuses_the_unified_schedule() {
-    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let directory = root.join("cs/compiled_circuits");
     let artifact_name = "unified_reduced_machine_schedule_b4_gkr.json";
     let artifact_bytes = std::fs::read(directory.join(artifact_name)).unwrap();
     let artifact = parse_forward_artifact(&artifact_bytes, artifact_name).unwrap();
     let compile = |layout_name: &str| {
         let layout: GKRCircuitArtifact<BabyBearField> =
-            serde_json::from_slice(&std::fs::read(directory.join(layout_name)).unwrap()).unwrap();
+            serde_json::from_slice(&std::fs::read(root.join(layout_name)).unwrap()).unwrap();
         let dag = lower_dag(&layout).unwrap_or_else(|error| panic!("{layout_name}: {error}"));
         compile_forward(&dag, &artifact).unwrap_or_else(|error| panic!("{layout_name}: {error:?}"))
     };
-    let unified = compile("unified_reduced_machine_layout_gkr.json");
+    let unified =
+        compile("circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json");
     let unified22 = compile(
-        "../../circuit_defs/unrolled_circuits/unified_reduced_machine_2_22/generated/layout.json",
+        "circuit_defs/unrolled_circuits/unified_reduced_machine_2_22/generated/layout.json",
     );
 
     assert_eq!(unified22.layers.len(), unified.layers.len());

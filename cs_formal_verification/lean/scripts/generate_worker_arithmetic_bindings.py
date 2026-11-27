@@ -2,6 +2,7 @@
 """Emit small kernel checks for the complete cached worker arithmetic bindings."""
 from pathlib import Path
 import json
+from check_compiler_captures import FAMILIES, cached_layout
 root=Path(__file__).resolve().parents[1]
 items={'KeccakColumnParity':'keccak-column-parity','KeccakThetaRho':'keccak-theta-rho','KeccakChi5':'keccak-chi5'}
 def address(a):
@@ -10,7 +11,7 @@ def address(a):
  if isinstance(d,dict):return f'(.{k} {d["layer"]} {d["offset"]})'
  raise ValueError(a)
 for title,name in items.items():
- cert=json.load(open(root/f'artifacts/compiler/description-arithmetic/{name}-cached.json'));c=json.load(open(root.parent.parent/f'cs/compiled_circuits/{name.replace("-","_")}_layout_gkr.json'))
+ cert=json.load(open(root/f'artifacts/compiler/description-arithmetic/{name}-cached.json'));c=json.load(cached_layout(FAMILIES[name]).open())
  ns=f'Airbender.Compiler.WorkerBindings.{title}';native=f'Airbender.Compiler.WorkerArithmetic.{title}.native';capture=f'Airbender.Compiler.Captures.{title}.imported.circuit';n=cert['counts']['source_variables'];m=len(cert['addresses'])
  directory=root/f'proven/Proven/Compiler/WorkerBindings/{title}';directory.mkdir(parents=True,exist_ok=True)
  header=f'''module

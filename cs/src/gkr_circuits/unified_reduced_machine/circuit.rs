@@ -857,12 +857,12 @@ mod test {
         }
 
         check::<BabyBearField>(
-            "compiled_circuits/unified_reduced_machine_layout_gkr.json",
-            "compiled_circuits/unified_reduced_machine_ssa_gkr.json",
+            "../circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json",
+            "../circuit_defs/unrolled_circuits/unified_reduced_machine/generated/ssa.json",
         );
         check::<Proth120>(
             "../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json",
-            "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
+            "../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/ssa.json",
         );
     }
 
@@ -963,22 +963,6 @@ mod test {
         assert!(!artifact.memory_layout.teardown_sets.is_empty());
     }
 
-    /// Serialize the caches-variant artifact to the path the
-    /// `gkr_circuits!` macro entry expects. Mirrors per-family pattern
-    /// (`compile_X_into_gkr` in each family's `circuit.rs::test`).
-    #[test]
-    fn compile_unified_reduced_machine_into_gkr() {
-        skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
-
-        let artifact =
-            build_unified_artifact::<BabyBearField>(true, UNIFIED_CIRCUIT_TRACE_LEN_LOG2, 1);
-        serialize_to_file(
-            &artifact,
-            "compiled_circuits/unified_reduced_machine_layout_gkr.json",
-        );
-    }
-
     /// No-caches variant. Matches the per-family `_no_caches` companion tests.
     #[test]
     fn compile_unified_reduced_machine_into_no_caches_gkr() {
@@ -990,48 +974,6 @@ mod test {
         serialize_to_file(
             &artifact,
             "compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
-        );
-    }
-
-    /// SSA witness graph dump for the unified circuit. Needed by
-    /// `witness_eval_generator::gen_for_gkr` to produce
-    /// `prover/compiled_circuits/unified_reduced_machine_generated_gkr.rs`
-    #[test]
-    fn compile_unified_reduced_machine_gkr_witness_graph() {
-        skip_if_ci!();
-        use crate::gkr_compiler::dump_ssa_witness_eval_form;
-        use ::field::baby_bear::base::BabyBearField;
-
-        let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
-            &|cs| unified_register_all_tables(cs, REGULAR_ROM),
-            &|cs| unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(cs),
-        );
-        serialize_to_file(
-            &ssa_forms,
-            "compiled_circuits/unified_reduced_machine_ssa_gkr.json",
-        );
-    }
-
-    #[test]
-    fn compile_unified_reduced_machine_gkr_witness_graph_large_field() {
-        skip_if_ci!();
-        use crate::gkr_compiler::dump_ssa_witness_eval_form;
-        use ::field::baby_bear::base::BabyBearField;
-        use ::field::proth120::Proth120;
-
-        let ssa_forms = dump_ssa_witness_eval_form::<Proth120>(
-            &|cs| unified_register_all_tables(cs, L1_WRAP_ROM),
-            &|cs| {
-                unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core::<
-                    Proth120,
-                    BabyBearField,
-                    _,
-                >(cs, L1_WRAP_ROM)
-            },
-        );
-        serialize_to_file(
-            &ssa_forms,
-            "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
         );
     }
 }

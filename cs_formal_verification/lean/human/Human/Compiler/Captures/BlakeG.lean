@@ -9,7 +9,7 @@ public import Human.Circuits.Blake2G.Artifact
 
 namespace Airbender.Compiler.Captures.BlakeG
 
-import_circuit importedCircuit from "../../cs/compiled_circuits/blake2_g_function_layout_gkr.json" shared imported
+import_circuit importedCircuit from "../../circuit_defs/blake2_g_function/generated/layout.json" shared imported
 
 noncomputable def imported : NativeCapture := {
   cached := true, circuit := importedCircuit, family := "blake-g", format_version := 1 }

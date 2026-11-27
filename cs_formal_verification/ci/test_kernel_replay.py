@@ -210,7 +210,10 @@ class SandboxExportTests(unittest.TestCase):
         self.assertEqual(exported, "complete export\n")
         self.assertFalse(partial)
         compiled = str(CI.parents[1] / "cs/compiled_circuits")
-        self.assertEqual(arguments, flags + ["--ro-bind", compiled, compiled, "--", "lake", "check"])
+        circuits = str(CI.parents[1] / "circuit_defs")
+        self.assertEqual(arguments, flags + [
+            "--ro-bind", compiled, compiled, "--ro-bind", circuits, circuits, "--", "lake", "check",
+        ])
 
     def test_failed_export_is_not_published(self):
         result, exported, partial, _, _ = self.wrapper(status=17)

@@ -386,9 +386,7 @@ mod test {
 
     use super::*;
 
-    use crate::gkr_compiler::compile_delegation_circuit_into_gkr;
     use crate::gkr_compiler::compile_delegation_circuit_into_gkr_without_caches;
-    use crate::gkr_compiler::dump_ssa_witness_eval_form;
 
     use crate::utils::serialize_to_file;
 
@@ -446,42 +444,6 @@ mod test {
     //     assert!(high_zero_assertions >= 2);
     //     assert!(reassembled_outputs >= 2);
     // }
-
-    #[test]
-    fn compile_blake2_g_function_into_gkr() {
-        skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
-
-        let gkr_compiled = compile_delegation_circuit_into_gkr::<BabyBearField>(
-            &|cs| blake2_g_function_table_addition_fn(cs),
-            &|cs| {
-                let _ = define_blake2_g_function_delegation_circuit(cs);
-            },
-            22,
-        );
-
-        serialize_to_file(
-            &gkr_compiled,
-            "compiled_circuits/blake2_g_function_layout_gkr.json",
-        );
-    }
-
-    #[test]
-    fn compile_blake2_g_function_witness_graph() {
-        skip_if_ci!();
-        use ::field::baby_bear::base::BabyBearField;
-
-        let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
-            &|cs| blake2_g_function_table_addition_fn(cs),
-            &|cs| {
-                let _ = define_blake2_g_function_delegation_circuit(cs);
-            },
-        );
-        serialize_to_file(
-            &ssa_forms,
-            "compiled_circuits/blake2_g_function_ssa_gkr.json",
-        );
-    }
 
     #[test]
     fn compile_blake2_g_function_into_no_caches_gkr() {

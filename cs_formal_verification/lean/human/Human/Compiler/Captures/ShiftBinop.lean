@@ -9,7 +9,7 @@ public import Human.Circuits.ShiftBinop.Artifact
 
 namespace Airbender.Compiler.Captures.ShiftBinop
 
-import_circuit importedCircuit from "../../cs/compiled_circuits/shift_binop_layout_gkr.json" shared imported
+import_circuit importedCircuit from "../../circuit_defs/unrolled_circuits/shift_binary/generated/layout.json" shared imported
 
 noncomputable def imported : NativeCapture := {
   cached := true, circuit := importedCircuit, family := "shift-binop", format_version := 1 }

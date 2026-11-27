@@ -7,6 +7,7 @@ module stays in the per-module time budget. `--check` fails when a committed mod
 from pathlib import Path
 import argparse
 import json
+from check_compiler_captures import cached_layout
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,7 +42,7 @@ def address(value):
 
 def layout_facts(layout):
     """The RAM outputs, the execute mask, its copy-chain root and the chain length."""
-    circuit = json.loads((ROOT.parent.parent / f"cs/compiled_circuits/{layout}_layout_gkr.json").read_text())
+    circuit = json.loads(cached_layout(layout).read_text())
     relations = [gate["enforced_relation"] for layer in circuit["layers"]
                  for gate in layer["gates"] + layer["gates_with_external_connections"]]
     outputs = circuit["global_output_map"]["PermutationProduct"]
