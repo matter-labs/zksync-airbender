@@ -4,19 +4,17 @@
 
 ## Build
 
-Default build (`security_100`, verification included):
+The default build includes CPU proving and verification.
 
 ```bash
 cargo build -p cli
 ```
 
-Build with `security_100`:
+Off x86-64, including on Apple Silicon and Linux ARM, CPU proving uses the
+transpiler VM for simulation. macOS CI exercises the CLI build, Fibonacci
+execution, native verification, and CPU simulation and replay.
 
-```bash
-cargo build -p cli --no-default-features --features security_100
-```
-
-Build with GPU proving support:
+On a CUDA platform, enable GPU proving with the `gpu` feature.
 
 ```bash
 cargo build -p cli --features gpu
@@ -89,7 +87,7 @@ cargo run --release -p cli -- \
 
 Verification checks:
 
-- security level compatibility (`artifact.security_level` vs build features),
+- security level compatibility (`artifact.security_level` vs the compiled security level),
 - program hash binding (`program_bin_keccak`, `program_text_keccak`),
 - recursion chain hash consistency (for recursion targets),
 - proof validity in the selected layer.
@@ -124,7 +122,8 @@ cargo run --release -p cli -- verify \
 
 ## Soundness Mode
 
-`prove`, `prove-batch`, `continue-proof` and `verify` take
+Select the soundness mode at runtime. `prove`, `prove-batch`, `continue-proof`,
+`trusted-params` and `verify` take
 `--soundness-mode pessimistic-conjecture|ethproofs-soundcalc` (default
 `pessimistic-conjecture`). Artifacts record their mode; `continue-proof` and `verify`
 refuse an artifact recorded in another mode and use that mode's own verifier guests.

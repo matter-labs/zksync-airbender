@@ -4,13 +4,17 @@ use common_constants::rom::ROM_SECOND_WORD_BITS;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
+use riscv_transpiler::jit::JitRunnerRam;
+#[cfg(target_arch = "x86_64")]
 use riscv_transpiler::jit::{
-    Context, DefaultContextImpl, JitRunnerRam, JittedCode, MachineState, MemoryHolder, MopField,
-    TraceChunk,
+    Context, DefaultContextImpl, JittedCode, MachineState, MemoryHolder, MopField, TraceChunk,
 };
 use riscv_transpiler::vm::{
-    DelegationsAndFamiliesCounters, RamWithRomRegion, SimpleSnapshotter, SimpleTape, State, RAM, VM,
+    DelegationsAndFamiliesCounters, RamWithRomRegion, SimpleTape, State, VM,
 };
+#[cfg(target_arch = "x86_64")]
+use riscv_transpiler::vm::{SimpleSnapshotter, RAM};
+#[cfg(target_arch = "x86_64")]
 use std::ptr::NonNull;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram, SoundnessMode};
@@ -30,6 +34,7 @@ fn recursion_fixture() -> (VerifiedFsvProgram, Vec<u32>, [u32; 8]) {
     (guest, responses, artifact.chain_hash)
 }
 
+#[cfg(target_arch = "x86_64")]
 fn run_jit(
     guest: &VerifiedFsvProgram,
     responses: Vec<u32>,
@@ -56,6 +61,7 @@ fn run_jit(
     (context.take_final_state().unwrap(), memory, trace)
 }
 
+#[cfg(target_arch = "x86_64")]
 #[test]
 fn test_jit_recursive_verifier() {
     let (guest, responses, chain_hash) = recursion_fixture();
@@ -91,6 +97,7 @@ fn test_ensure_proof_correctness() {
     );
 }
 
+#[cfg(target_arch = "x86_64")]
 #[test]
 #[ignore = "long-running manual consistency test"]
 fn run_recursion_and_compare() {

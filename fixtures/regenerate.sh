@@ -110,7 +110,7 @@ check_artifact() {
     [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --target compression --backend cpu --output "$params"
     trusted=(--trusted-params "$params")
   fi
-  "$cli" verify --proof "$file" --bin "$bin" --soundness-mode "$cli_mode" "${trusted[@]}"
+  "$cli" verify --proof "$file" --bin "$bin" --soundness-mode "$cli_mode" "${trusted[@]+"${trusted[@]}"}"
   compare_file "$file"
 }
 

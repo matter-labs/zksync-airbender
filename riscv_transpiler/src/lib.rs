@@ -7,6 +7,9 @@
 #![feature(slice_ptr_get)]
 #![deny(improper_ctypes)]
 
+#[cfg(all(feature = "jit", not(target_arch = "x86_64")))]
+compile_error!("riscv_transpiler: feature jit requires target_arch=x86_64");
+
 // In the first take over the compiler and the corresponding simulator we will first
 // preprocess the bytecode into fixed-width format, and then will do very simple and execution loop
 // that just dispatches a function pointer

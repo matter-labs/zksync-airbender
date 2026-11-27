@@ -47,9 +47,12 @@ use log::{info, trace};
 use riscv_transpiler::vm::{NonDeterminismCSRSource, SimpleTape};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+#[cfg(target_arch = "x86_64")]
+use std::sync::Mutex;
 use std::thread::JoinHandle;
 use std::time::Instant;
+#[cfg(target_arch = "x86_64")]
 use type_map::concurrent::TypeMap;
 use worker::Worker;
 

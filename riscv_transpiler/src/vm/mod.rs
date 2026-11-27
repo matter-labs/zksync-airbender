@@ -177,6 +177,22 @@ pub trait NonDeterminismCSRSource {
         None
     }
 
+    fn flattened_words(&self) -> Option<&[u32]> {
+        None
+    }
+
+    fn read_flattened_word(&self, index: usize) -> u32 {
+        let words = self
+            .flattened_words()
+            .expect("VM flattened non-determinism source must expose its words");
+        *words.get(index).unwrap_or_else(|| {
+            panic!(
+                "VM flattened non-determinism exhausted at index {index} (length {})",
+                words.len()
+            )
+        })
+    }
+
     fn read(&mut self) -> u32;
 
     // we in general can allow CSR source to peek into memory (readonly)
@@ -236,6 +252,10 @@ impl NonDeterminismCSRSource for FlatResponsesSource {
 
     fn nondeterminism_as_raw_ptr(&self) -> Option<*const u32> {
         Some(self.oracle[..].as_ptr())
+    }
+
+    fn flattened_words(&self) -> Option<&[u32]> {
+        Some(&self.oracle)
     }
 
     fn read(&mut self) -> u32 {

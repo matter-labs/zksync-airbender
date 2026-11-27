@@ -17,6 +17,36 @@ fn assemble_single_instruction(instruction: &str) -> u32 {
 }
 
 #[test]
+fn vm_word_group_widths_match_jit_cycle_boundaries() {
+    for (program, _) in super::vm_state_tests::word_group_programs() {
+        let widths = SimpleTape::new(&program).word_group_widths(JitRunnerRam::Tiny);
+        let halt = program
+            .iter()
+            .position(|instr| instr.name == InstructionName::Jal && instr.imm == 0)
+            .unwrap();
+        for cap in 0..=halt {
+            let mut stop = 0;
+            while stop < cap {
+                stop += usize::from(widths[stop]);
+            }
+            let (state, _) = JittedCode::<_>::run_alternative_simulator_from_instructions(
+                &program,
+                &mut (),
+                &[],
+                Some(cap as u32),
+                MopField::BabyBear,
+                JitRunnerRam::Tiny,
+            );
+            assert_eq!(state.pc, 4 * stop as u32, "cap {cap}, {program:?}");
+            assert_eq!(
+                state.timestamp,
+                INITIAL_TIMESTAMP + TIMESTAMP_STEP * stop as u64
+            );
+        }
+    }
+}
+
+#[test]
 #[serial_test::serial]
 fn test_jit_preserves_counters_across_nondeterminism_callbacks() {
     struct ClobberingSource;

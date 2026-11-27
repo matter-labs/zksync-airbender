@@ -47,8 +47,7 @@ required-features = ["verifiers"]
 name = "execution_reference"
 required-features = ["deterministic_pow"]
 
-# The JIT simulator exists on x86-64 only (`riscv_transpiler::jit` gates it on the target
-# architecture as well): the feature only adds its assembler dependencies elsewhere.
+# Request JIT code generation on x86-64.
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 riscv_transpiler = { workspace = true, features = ["jit"] }
 

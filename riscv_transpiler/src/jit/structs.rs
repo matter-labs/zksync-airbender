@@ -49,9 +49,9 @@ impl TraceChunk {
         self.len = 0;
     }
 
-    #[cfg(all(target_arch = "x86_64", feature = "jit"))]
+    #[cfg(all(target_arch = "x86_64", feature = "auto-jit"))]
     pub(crate) const TIMESTAMPS_OFFSET: usize = offset_of!(Self, timestamps);
-    #[cfg(all(target_arch = "x86_64", feature = "jit"))]
+    #[cfg(all(target_arch = "x86_64", feature = "auto-jit"))]
     pub(crate) const LEN_OFFSET: usize = offset_of!(Self, len);
 }
 
@@ -71,7 +71,7 @@ impl JitRunnerRam {
     }
 
     // Offset in bytes to the timestamps
-    #[cfg(all(target_arch = "x86_64", feature = "jit"))]
+    #[cfg(all(target_arch = "x86_64", feature = "auto-jit"))]
     pub(crate) fn timestamps_offset(&self) -> u64 {
         *self as u64
     }

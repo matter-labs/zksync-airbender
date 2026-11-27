@@ -32,7 +32,7 @@ setups = { workspace = true }
 
 common_constants = { workspace = true }
 fft = { workspace = true }
-riscv_transpiler = { workspace = true, features = ["jit"] }
+riscv_transpiler = { workspace = true }
 verifier_common = { workspace = true }
 worker = { workspace = true }
 

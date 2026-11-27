@@ -1,7 +1,8 @@
 use crate::vm::*;
+use common_constants::circuit_families::*;
 use common_constants::*;
 use std::alloc::Allocator;
-#[cfg(all(target_arch = "x86_64", feature = "jit"))]
+#[cfg(all(target_arch = "x86_64", feature = "auto-jit"))]
 use std::mem::offset_of;
 use std::ptr::NonNull;
 
@@ -15,7 +16,7 @@ pub use self::delegations::*;
 #[cfg(target_pointer_width = "64")]
 pub use self::structs::*;
 
-#[cfg(all(target_arch = "x86_64", feature = "jit"))]
+#[cfg(all(target_arch = "x86_64", feature = "auto-jit"))]
 #[allow(
     clippy::useless_conversion,
     clippy::identity_op,
@@ -23,11 +24,14 @@ pub use self::structs::*;
 )] // dynasm! operand expansion
 mod impls;
 
-#[cfg(all(target_arch = "x86_64", feature = "jit"))]
+#[cfg(all(target_arch = "x86_64", feature = "auto-jit"))]
 pub use self::impls::*;
 
-#[cfg(all(target_arch = "x86_64", feature = "jit", test))]
+#[cfg(all(target_arch = "x86_64", feature = "auto-jit", test))]
 mod tests;
+
+#[cfg(test)]
+mod vm_state_tests;
 
 // We will measure trace chunk in a number of memory accesses and not in a almost fixed number of cycles that did pass between them.
 // At most we extend a chunk by the number of accesses in delegation
@@ -174,6 +178,49 @@ impl MachineCounters {
             values: [0; MAX_NUM_COUNTERS],
         }
     }
+
+    fn family_slot<const FAMILY: u8>() -> usize {
+        let counter = match FAMILY {
+            ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX => CounterType::AddSubLui,
+            JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX => CounterType::BranchSlt,
+            SHIFT_BINARY_CIRCUIT_FAMILY_IDX => CounterType::ShiftBinary,
+            MUL_DIV_CIRCUIT_FAMILY_IDX => CounterType::MulDiv,
+            LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX => CounterType::MemWord,
+            LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX => CounterType::MemSubword,
+            _ => panic!("MachineCounters: unsupported circuit family {FAMILY}"),
+        };
+        counter as usize
+    }
+}
+
+impl Counters for MachineCounters {
+    fn bump_bigint(&mut self, by: usize) {
+        self[CounterType::BigintDelegation as usize] += by as u64;
+    }
+
+    fn bump_blake2_round_function(&mut self, by: usize) {
+        self[CounterType::BlakeDelegation as usize] += by as u64;
+    }
+
+    fn bump_keccak_special5(&mut self, by: usize) {
+        self[CounterType::KeccakDelegation as usize] += by as u64;
+    }
+
+    fn bump_keccak_f1600(&mut self, by: usize) {
+        self[CounterType::KeccakF1600Delegation as usize] += by as u64;
+    }
+
+    fn bump_blake2_g_function(&mut self, by: usize) {
+        self[CounterType::BlakeGFunctionDelegation as usize] += by as u64;
+    }
+
+    fn log_multiple_circuit_family_calls<const FAMILY: u8>(&mut self, num_calls: usize) {
+        self[Self::family_slot::<FAMILY>()] += num_calls as u64;
+    }
+
+    fn get_calls_to_circuit_family<const FAMILY: u8>(&self) -> usize {
+        self[Self::family_slot::<FAMILY>()] as usize
+    }
 }
 
 impl Default for MachineCounters {
@@ -263,7 +310,43 @@ pub struct MachineState {
 // (32 x 33 x 33): rs1 in 0..32, rs2 in 0..33 (32 = load), rd in 0..33 (32 = store).
 pub const PACKED_TS_LEN: usize = 32 * 33 * 33;
 
-#[cfg(all(target_arch = "x86_64", feature = "jit"))]
+impl From<&State<MachineCounters>> for MachineState {
+    fn from(state: &State<MachineCounters>) -> Self {
+        let mut packed = Self::initial();
+        packed.pc = state.pc;
+        packed.timestamp = state.timestamp;
+        packed.counters = state.counters;
+
+        for (r, register) in state.registers.iter().enumerate() {
+            if r != 0 {
+                *packed.get_register_mut(r) = register.value;
+            }
+            let timestamp = register.timestamp;
+            if timestamp == 0 {
+                continue;
+            }
+
+            let (rs2, rd) = match (timestamp % TIMESTAMP_STEP, r) {
+                (0, _) => (32, 32),
+                (1, _) => (r, 32),
+                (2, 0) | (3, 10..=12) => {
+                    packed.register_timestamps[r] = timestamp;
+                    continue;
+                }
+                (2, _) => (32, r),
+                (residue, _) => {
+                    panic!("MachineState: invalid VM timestamp sub-slot {residue} for x{r}")
+                }
+            };
+            packed.packed_timestamps[33 * 33 * r + 33 * rs2 + rd] =
+                timestamp & !(TIMESTAMP_STEP - 1);
+        }
+
+        packed
+    }
+}
+
+#[cfg(all(target_arch = "x86_64", feature = "auto-jit"))]
 impl MachineState {
     const SIZE: usize = core::mem::size_of::<Self>();
     const _T: () = const {

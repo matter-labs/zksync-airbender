@@ -156,9 +156,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 profiles,
                 machine_type,
                 binary_image: Arc::clone(&binary_image),
+                #[cfg(target_arch = "x86_64")]
                 text_section: Arc::clone(&text_section),
                 cycles_bound,
                 instruction_tape,
+                #[cfg(target_arch = "x86_64")]
                 jit_cache: Arc::new(Mutex::new(TypeMap::new())),
                 precomputations,
                 l1_wrap_precomputations,
@@ -171,7 +173,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     }
 }
 
-#[cfg(all(test, target_arch = "x86_64"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::SoundnessMode;
